@@ -1,431 +1,1682 @@
-﻿<!DOCTYPE html>
-<head>
-  <title>Chat</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-</head>
-
-<style>
-body  { font-family: Roboto,Lato,Arial; line-height:1.5; font-size:16px; margin:0; padding:0; overflow:hidden; }
-header { background: linear-gradient(to bottom right, #06c, #fc0); }
-header { color:#eee; padding:12px; font-size:20px; height:45px; font-family:"Open Sans" }
-#left  { float:left;  width:calc(60vw - 30px); height:calc(100vh - 100px); }
-#right { float:right; width:40%; height:calc(100vh - 100px); } 
-#left, #prompt, #list { border:1px solid grey; padding:6px; overflow:auto }
-#list li:hover  { background:#ddd }
-#menu button    { font-family:Lato,arial; border-radius:3px; border:none; padding:3px 6px}
-#right textarea { display:block; width:96%; margin:3px auto; background:#eee}
-.prompt { color:#322; background:#ccc; padding:6px; }
-
-.markdown code { background:#f0f0f0; color:navy; border-radius:6px; padding:2px; } 
-.markdown pre  { background:#f0f0f0; margin:16px; border:1px solid #ddd; padding:8px; border-radius: 6px;  } 
-.markdown pre:hover button { display:block; }
-.markdown pre button { display:none; float:right; margin:4px }
-.markdown blockquote { background:#f0f0f0; border-left:6px solid grey; padding:8px }
-.markdown table { margin:12px; border-collapse: collapse; }
-.markdown th    { border:1px solid grey; background:lightgrey; padding:6px; } 
-.markdown td    { border:1px solid grey;  padding:6px; }
-.markdown tr:nth-child(even) {  background:#f0f0f0;  }
-
-@media print{
-  #menu, #right { display:none!important }
-  #left { position:relative; width:100%; left:0px; top:0px; border:none; height:auto; overflow:hidden }
-  .prompt { border-bottom: 1px solid grey }
-}
-
-@media screen and (max-width: 880px) {
-  #list, .desktop { display:none!important }
-  #right { position:absolute; width:auto; height:auto; bottom:10px; left:8px; right:70px }
-  #right textarea { height:1.2em; padding:10px; overflow:auto }
-  #btnSend { position:absolute; height:36px; bottom:12px; right:12px; }
-  #left	 { width:97%; height:calc(100vh - 154px);  }
-}
-</style>
-
-<header>
-  <div id=heading style="float:left">Vanilla ChatGPT<br>
-    <span id=message style="color:yellow;font-size:10px">
-        <a href="https://github.com/casualwriter/vanilla-chatgpt" target=_NEW>github</a> @20230412
-    </span>
-  </div>
-  <div id=menu style="float:right;">
-    <button onclick="chat.recognition()" title="voice input">🎤</button>
-    <button onclick="chat.logout()" title="remove API key">Logout</button> 
-    <button onclick="chat.export()" title="export conversation">Export</button>
-    <button class=desktop onclick="chat.showPrompts()" title="show prompts">Prompts</button>&nbsp;
-    <button id=btnSend accesskey=s onclick="chat.submit()" title="[Alt-S] submit prompt"><b>S</b>end</button>
-  </div>
-</header>
-
-<div id="content" style="margin:8px;color:#112;background:bed">
-  <div id="right">
-     <textarea id=prompt rows=3 placeholder="please input prompt here.."></textarea>
-     <div id="list" style="height:calc(100vh - 163px)">
-        <b>Samples of prompt</b>
-        <ul>
-          <li>A quote of today
-          <li>A table for 10 famous artists include name, DOB and style
-          <li>Create an article outline in markdown format for "teamwork"
-          <li>Create a dialogue discussing "the meaning of love"
-          <li>Introduce "vanilla chatGPT"
-          <li>Write a short story about "vanilla chatGPT"
-          <li>Discuss about the pros and cons of "vanilla js"
-          <li>Summarize the following content ...
-        </ul>
-     </div>
-  </div>
-  <div id="left">
-    <div id="main" style="padding:12px; max-width:960px">
-       <h3>Welcome to vanilla-chatgpt.</h3>
-       <p class=desktop>Please submit prompt by pressing 
-       <label><input type="radio" name="submitkey" onclick="chat.hotkey='enter'" checked>[Enter]</label>
-       <label><input type="radio" name="submitkey" onclick="chat.hotkey='ctrl'">[Ctrl-Enter]</label>
-       </p>
-       [Ctrl-P] to print <br>[Export] to export conversation <br>[Logout] to remove API key
-    </div>
-  </div>
-</div>
-
-<script>
-/*****************************************************************************
- * casual-markdown - a lightweight regexp-base markdown parser with TOC support
- * last updated on 2023/03/27, v0.91, some refinement for chatgpt markdown
- *
- * Copyright (c) 2022-2023, Casualwriter (MIT Licensed)
- * https://github.com/casualwriter/casual-markdown
-*****************************************************************************/
-  // define md object, and extent function (which is a dummy function)
-  const md = { yaml:{}, before: function (str) {return str}, after: function (str) {return str} }
-
-  // function for REGEXP to convert html tag. ie. <TAG> => &lt;TAG*gt;  
-  md.formatTag = function (html) { return html.replace(/</g,'&lt;').replace(/\>/g,'&gt;'); }
-
-  //===== format code-block, highlight remarks/keywords for code/sql
-  md.formatCode = function (match, title, block) {
-    // convert tag <> to &lt; &gt; tab to 3 space, support marker using ^^^
-    block = block.replace(/</g,'&lt;').replace(/\>/g,'&gt;')
-    block = block.replace(/\t/g,'   ').replace(/\^\^\^(.+?)\^\^\^/g, '<mark>$1</mark>')
-    
-    // highlight comment and keyword based on title := none | sql | code
-    if (title.toLowerCase(title) == 'sql') {
-      block = block.replace(/^\-\-(.*)/gm,'<rem>--$1</rem>').replace(/\s\-\-(.*)/gm,' <rem>--$1</rem>')   
-      block = block.replace(/(\s?)(function|procedure|return|if|then|else|end|loop|while|or|and|case|when)(\s)/gim,'$1<b>$2</b>$3')
-      block = block.replace(/(\s?)(select|update|delete|insert|create|from|where|group by|having|set)(\s)/gim,'$1<b>$2</b>$3')
-    } else if ((title||'none')!=='none') {
-      block = block.replace(/^\/\/(.*)/gm,'<rem>//$1</rem>').replace(/\s\/\/(.*)/gm,' <rem>//$1</rem>')   
-      block = block.replace(/(\s?)(function|procedure|return|if|then|else|end|loop|while|or|and|case|when)(\s)/gim,'$1<b>$2</b>$3')
-      block = block.replace(/(\s?)(var|let|const|for|next|do|while|loop|continue|break|switch|try|catch|finally)(\s)/gim,'$1<b>$2</b>$3')
-    }
-    return '<pre title="' + title + '"><button onclick="md.clipboard(this)">copy</button><code>'  + block + '</code></pre>'
-  }
-  
-  //===== parse markdown string into HTML string (exclude code-block)
-  md.parser = function( mdstr ) {
-  
-    // apply yaml variables
-    for (var name in this.yaml) mdstr = mdstr.replace( new RegExp('\{\{\\s*'+name+'\\s*\}\}', 'gm'), this.yaml[name] )
-    
-    // table syntax
-    mdstr = mdstr.replace(/\n(.+?)\n.*?\-\-\s?\|\s?\-\-.*?\n([\s\S]*?)\n\s*?\n/g, function (m,p1,p2) {
-        var thead = p1.replace(/^\|(.+)/gm,'$1').replace(/(.+)\|$/gm,'$1').replace(/\|/g,'<th>')
-        var tbody = p2.replace(/^\|(.+)/gm,'$1').replace(/(.+)\|$/gm,'$1')
-        tbody = tbody.replace(/(.+)/gm,'<tr><td>$1</td></tr>').replace(/\|/g,'<td>')
-        return '\n<table>\n<thead>\n<th>' + thead + '\n</thead>\n<tbody>' + tbody + '\n</tbody></table>\n\n' 
-    } )   
-
-    // horizontal rule => <hr> 
-    mdstr = mdstr.replace(/^-{3,}|^\_{3,}|^\*{3,}$/gm, '<hr>').replace(/\n\n<hr\>/g, '\n<br><hr>')
-
-    // header => <h1>..<h5> 
-    mdstr = mdstr.replace(/^##### (.*?)\s*#*$/gm, '<h5>$1</h5>')
-              .replace(/^#### (.*?)\s*#*$/gm, '<h4>$1</h4>')
-              .replace(/^### (.*?)\s*#*$/gm, '<h3>$1</h3>')
-              .replace(/^## (.*?)\s*#*$/gm, '<h2>$1</h2>')
-              .replace(/^# (.*?)\s*#*$/gm, '<h1>$1</h1>')
-              .replace(/^<h(\d)\>(.*?)\s*{(.*)}\s*<\/h\d\>$/gm, '<h$1 id="$3">$2</h$1>')
-        
-    // inline code-block: `code-block` => <code>code-block</code>    
-    mdstr = mdstr.replace(/``(.*?)``/gm, function(m,p){ return '<code>' + md.formatTag(p).replace(/`/g,'&#96;') + '</code>'} ) 
-    mdstr = mdstr.replace(/`(.*?)`/gm, '<code>$1</code>' )
-        
-    // blockquote, max 2 levels => <blockquote>{text}</blockquote>
-    mdstr = mdstr.replace(/^\>\> (.*$)/gm, '<blockquote><blockquote>$1</blockquote></blockquote>')
-    mdstr = mdstr.replace(/^\> (.*$)/gm, '<blockquote>$1</blockquote>')
-    mdstr = mdstr.replace(/<\/blockquote\>\n<blockquote\>/g, '\n<br>' )
-    mdstr = mdstr.replace(/<\/blockquote\>\n<br\><blockquote\>/g, '\n<br>' )
-                  
-    // image syntax: ![title](url) => <img alt="title" src="url" />          
-    mdstr = mdstr.replace(/!\[(.*?)\]\((.*?) "(.*?)"\)/gm, '<img alt="$1" src="$2" $3 />')
-    mdstr = mdstr.replace(/!\[(.*?)\]\((.*?)\)/gm, '<img alt="$1" src="$2" width="90%" />')
-                  
-    // links syntax: [title "title"](url) => <a href="url" title="title">text</a>          
-    mdstr = mdstr.replace(/\[(.*?)\]\((.*?) "new"\)/gm, '<a href="$2" target=_new>$1</a>')
-    mdstr = mdstr.replace(/\[(.*?)\]\((.*?) "(.*?)"\)/gm, '<a href="$2" title="$3">$1</a>')
-    mdstr = mdstr.replace(/([<\s])(https?\:\/\/.*?)([\s\>])/gm, '$1<a href="$2">$2</a>$3')
-    mdstr = mdstr.replace(/\[(.*?)\]\(\)/gm, '<a href="$1">$1</a>')
-    mdstr = mdstr.replace(/\[(.*?)\]\((.*?)\)/gm, '<a href="$2">$1</a>')
-                  
-    // unordered/ordered list, max 2 levels  => <ul><li>..</li></ul>, <ol><li>..</li></ol>
-    mdstr = mdstr.replace(/^[\*+-][ .](.*)/gm, '<ul><li>$1</li></ul>' )
-    mdstr = mdstr.replace(/^\d\d?[ .](.*)/gm, '<ol><li>$1</li></ol>' )
-    mdstr = mdstr.replace(/^\s{2,6}[\*+-][ .](.*)/gm, '<ul><ul><li>$1</li></ul></ul>' )
-    mdstr = mdstr.replace(/^\s{2,6}\d[ .](.*)/gm, '<ul><ol><li>$1</li></ol></ul>' )
-    mdstr = mdstr.replace(/<\/[ou]l\>\n\n?<[ou]l\>/g, '\n' )
-    mdstr = mdstr.replace(/<\/[ou]l\>\n<[ou]l\>/g, '\n' )
-                  
-    // text decoration: bold, italic, underline, strikethrough, highlight                
-    mdstr = mdstr.replace(/\*\*\*(\w.*?[^\\])\*\*\*/gm, '<b><em>$1</em></b>')
-    mdstr = mdstr.replace(/\*\*(\w.*?[^\\])\*\*/gm, '<b>$1</b>')
-    mdstr = mdstr.replace(/\*(\w.*?[^\\])\*/gm, '<em>$1</em>')
-    mdstr = mdstr.replace(/___(\w.*?[^\\])___/gm, '<b><em>$1</em></b>')
-    mdstr = mdstr.replace(/__(\w.*?[^\\])__/gm, '<u>$1</u>')
-    // mdstr = mdstr.replace(/_(\w.*?[^\\])_/gm, '<u>$1</u>')  // NOT support!! 
-    mdstr = mdstr.replace(/\^\^\^(.+?)\^\^\^/gm, '<mark>$1</mark>')
-    mdstr = mdstr.replace(/\^\^(\w.*?)\^\^/gm, '<ins>$1</ins>')
-    mdstr = mdstr.replace(/~~(\w.*?)~~/gm, '<del>$1</del>')
-                  
-    // line break and paragraph => <br/> <p>                
-    mdstr = mdstr.replace(/  \n/g, '\n<br/>').replace(/\n\s*\n/g, '\n<p>\n')
-        
-    // indent as code-block          
-    mdstr = mdstr.replace(/^ {4,10}(.*)/gm, function(m,p) { return '<pre><code>' + md.formatTag(p) + '</code></pre>'} )
-    mdstr = mdstr.replace(/^\t(.*)/gm, function(m,p) { return '<pre><code>' + md.formatTag(p) + '</code></pre>'} )
-    mdstr = mdstr.replace(/<\/code\><\/pre\>\n<pre\><code\>/g, '\n' )
-
-    // Escaping Characters                
-    return mdstr.replace(/\\([`_~\*\+\-\.\^\\\<\>\(\)\[\]])/gm, '$1' )
-  }
-
-  //===== parse markdown string into HTML content (cater code-block)
-  md.html = function (mdText) { 
-    // replace \r\n to \n, and handle front matter for simple YAML
-    mdText = mdText.replace(/\r\n/g, '\n').replace( /^---+\s*\n([\s\S]*?)\n---+\s*\n/, md.formatYAML )
-    // handle code-block.
-    mdText = mdText.replace(/\n~~~/g,'\n```').replace(/\n``` *(.*?)\n([\s\S]*?)\n``` *\n/g, md.formatCode)
-    
-    // split by "<code>", skip for code-block and process normal text
-    var pos1=0, pos2=0, mdHTML = ''
-    while ( (pos1 = mdText.indexOf('<code>')) >= 0 ) {
-      pos2 = mdText.indexOf('</code>', pos1 )
-      mdHTML += md.after( md.parser( md.before( mdText.substr(0,pos1) ) ) )
-      mdHTML += mdText.substr(pos1, (pos2>0? pos2-pos1+7 : mdtext.length) )
-      mdText = mdText.substr( pos2 + 7 )
-    }
-
-    return '<div class="markdown">' + mdHTML + md.after( md.parser( md.before(mdText) ) ) + '</div>'
-  }
-  
-  md.clipboard = (e) => {
-    navigator.clipboard.writeText( e.parentNode.innerText.replace('copy\n','') )
-    e.innerText = 'copied'
-  }
-//============= end of casual-markdown-parser===================
-
-/*****************************************************************************
-* vanilla-chatgpt.js - chat library for openai-chatgpt
-* last updated on 2023/03/28, v0.60, basic chat, responsive, print-friendly, export.
-*
-* Copyright (c) 2023, Casualwriter (MIT Licensed)
-* https://github.com/casualwriter/vanilla-chatgpt
-*****************************************************************************/
-
-const chat = (id) => window.document.getElementById(id);
-
-// Set the API endpoint URL
-chat.endPoint  = "https://api.openai.com/v1/chat/completions";
-chat.model = "gpt-3.5-turbo"
-chat.body  = { model: chat.model, temperature: 0.8 }
-chat.history = []
-
-// stream result from openai
-chat.stream = function (prompt) {
-
-  chat.body.stream = true 
-  chat.body.messages = [ { role: "user", content: prompt} ]
-  chat.headers = { "Authorization": `Bearer ${chat.apiKey}`, "Content-Type": "application/json" }
-  chat.result = ''
-  chat.controller = new AbortController();
-  const signal = chat.controller.signal
-   
-  for (let i=chat.history.length-1; i>=0&&i>(chat.history.length-3); i--) {
-    chat.body.messages.unshift( { role:'assistant', content: chat.history[i].result } );
-    chat.body.messages.unshift( { role:'user', content: chat.history[i].prompt } );
-  }
-  
-  fetch( chat.endPoint, { method:'POST', headers: chat.headers, body: JSON.stringify(chat.body), signal } )
-  .then( response => { 
-  
-    if (!response.ok) {
-        if (response.status == 401) throw new Error('401 Unauthorized, invalide API Key');
-        throw new Error('failed to get data, error status '+response.status)
-    }
-    
-    const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
-    
-    reader.read().then( function processText({ done, value }) {
-    
-      if (done) return chat.oncomplete(chat.result);
-      
-      const lines = (chat.value=value).split('\n');
-
-      for (let i in lines) {
-        if (lines[i].length === 0) continue;     // ignore empty message
-        if (lines[i].startsWith(':')) continue;  // ignore comment message
-        if (lines[i] === 'data: [DONE]') return chat.oncomplete(chat.result); // end of message
-        
-        chat.json = JSON.parse(lines[i].substring(6));
-        if (chat.json.choices) {
-          chat.result += (chat.json.choices[0].delta.content||'') 
-        }	 
+﻿<!doctype html>
+<html>
+  <head>
+    <title>Multi-LLM Chat</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  </head>
+  <body>
+    <style>
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Lato, Arial,
+          sans-serif;
+        line-height: 1.6;
+        font-size: 16px;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background: #f5f5f5;
+      }
+      header {
+        background: linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%);
+        color: #fff;
+        padding: 16px 24px;
+        font-size: 20px;
+        box-shadow:
+          0 4px 6px rgba(0, 0, 0, 0.1),
+          0 1px 3px rgba(0, 0, 0, 0.08);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        min-height: 70px;
+      }
+      #left {
+        float: left;
+        width: calc(60vw - 30px);
+        height: calc(100vh - 102px);
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      }
+      #right {
+        float: right;
+        width: calc(40% - 20px);
+        height: calc(100vh - 102px);
+      }
+      #left,
+      #prompt,
+      #list {
+        border: 1px solid #e0e0e0;
+        padding: 12px;
+        overflow: auto;
+        border-radius: 8px;
+      }
+      #list li:hover {
+        background: #f0f0f0;
+        cursor: pointer;
+      }
+      #heading {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+      #heading span {
+        margin-top: 4px;
+      }
+      #menu {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      #menu button {
+        font-family: inherit;
+        border-radius: 8px;
+        border: none;
+        padding: 10px 18px;
+        background: rgba(255, 255, 255, 0.2);
+        color: #fff;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        font-size: 14px;
+        font-weight: 500;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      #menu button:hover {
+        background: rgba(255, 255, 255, 0.3);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15);
+      }
+      #menu button:active {
+        transform: translateY(0);
+      }
+      #btnSend {
+        background: rgba(255, 255, 255, 0.25) !important;
+        font-weight: 600;
+      }
+      #btnSend:hover {
+        background: rgba(255, 255, 255, 0.35) !important;
+      }
+      #right textarea {
+        display: block;
+        width: calc(100% - 24px);
+        margin: 3px auto;
+        background: #fff;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 12px;
+        font-family: inherit;
+        font-size: 14px;
+        resize: vertical;
+      }
+      .prompt {
+        color: #333;
+        background: #f8f9fa;
+        padding: 10px;
+        border-radius: 6px;
+        margin: 8px 0;
+        border-left: 4px solid #3b82f6;
       }
 
-      chat.onmessage(chat.result)
-      return reader.read().then(processText);
-       
-    } )
-    
-  } ).catch( error => chat.onerror(error) );
-  
-}
+      .markdown code {
+        background: #f0f0f0;
+        color: #d63384;
+        border-radius: 4px;
+        padding: 2px 6px;
+        font-size: 0.9em;
+      }
+      .markdown pre {
+        background: #f8f9fa;
+        margin: 16px 0;
+        border: 1px solid #e0e0e0;
+        padding: 12px;
+        border-radius: 8px;
+        overflow-x: auto;
+      }
+      .markdown pre:hover button {
+        display: block;
+      }
+      .markdown pre button {
+        display: none;
+        float: right;
+        margin: 4px;
+        padding: 4px 8px;
+        background: #3b82f6;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .markdown blockquote {
+        background: #f8f9fa;
+        border-left: 4px solid #3b82f6;
+        padding: 12px;
+        margin: 12px 0;
+      }
+      .markdown table {
+        margin: 12px 0;
+        border-collapse: collapse;
+        width: 100%;
+      }
+      .markdown th {
+        border: 1px solid #e0e0e0;
+        background: #f8f9fa;
+        padding: 10px;
+        text-align: left;
+      }
+      .markdown td {
+        border: 1px solid #e0e0e0;
+        padding: 10px;
+      }
+      .markdown tr:nth-child(even) {
+        background: #f8f9fa;
+      }
 
-// default error handle
-chat.onerror = (error) => { alert(error);  };
+      /* Settings Modal */
+      #settingsModal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+      }
+      #settingsContent {
+        background: #fff;
+        margin: 5% auto;
+        padding: 0;
+        width: 90%;
+        max-width: 800px;
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        max-height: 85vh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+      #settingsHeader {
+        background: linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%);
+        color: #fff;
+        padding: 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      #settingsHeader h2 {
+        margin: 0;
+        font-size: 24px;
+      }
+      #settingsClose {
+        background: none;
+        border: none;
+        color: #fff;
+        font-size: 28px;
+        cursor: pointer;
+        padding: 0;
+        width: 32px;
+        height: 32px;
+        line-height: 32px;
+      }
+      #settingsBody {
+        padding: 20px;
+        overflow-y: auto;
+        flex: 1;
+      }
+      .settings-section {
+        margin-bottom: 30px;
+      }
+      .settings-section h3 {
+        margin: 0 0 15px 0;
+        color: #333;
+        font-size: 18px;
+        border-bottom: 2px solid #3b82f6;
+        padding-bottom: 8px;
+      }
+      .provider-form {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 15px;
+      }
+      .provider-form input,
+      .provider-form select {
+        width: 100%;
+        padding: 10px;
+        margin: 8px 0;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        font-size: 14px;
+        box-sizing: border-box;
+      }
+      .provider-form button {
+        background: #3b82f6;
+        color: #fff;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+        margin-top: 8px;
+      }
+      .provider-form button:hover {
+        background: #2563eb;
+      }
+      .provider-item {
+        background: #fff;
+        border: 1px solid #e0e0e0;
+        padding: 15px;
+        margin: 10px 0;
+        border-radius: 8px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .provider-item-info {
+        flex: 1;
+      }
+      .provider-item-name {
+        font-weight: bold;
+        color: #333;
+        margin-bottom: 4px;
+      }
+      .provider-item-model {
+        color: #666;
+        font-size: 14px;
+      }
+      .provider-item-actions button {
+        margin-left: 8px;
+        padding: 6px 12px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 13px;
+      }
+      .btn-edit {
+        background: #3b82f6;
+        color: #fff;
+      }
+      .btn-delete {
+        background: #dc3545;
+        color: #fff;
+      }
+      .btn-edit:hover {
+        background: #2563eb;
+      }
+      .btn-delete:hover {
+        background: #c82333;
+      }
 
-// clear API key when logout
-chat.logout = () => { 
-  if (confirm( 'Logout and clear API Key?')) localStorage.clear();
-}
+      /* LLM Selector */
+      #llmSelector {
+        background: #fff;
+        border: 1px solid #e0e0e0;
+        padding: 12px;
+        border-radius: 8px;
+        margin-bottom: 12px;
+      }
+      #llmSelector label {
+        display: inline-block;
+        margin: 4px 8px 4px 0;
+        padding: 6px 12px;
+        background: #f8f9fa;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+      }
+      #llmSelector input[type="checkbox"] {
+        margin-right: 6px;
+      }
+      #llmSelector label:hover {
+        background: #e9ecef;
+      }
+      #llmSelector input[type="checkbox"]:checked + span {
+        font-weight: bold;
+        color: #3b82f6;
+      }
 
-// export conversation
-chat.export = (fname) => {
-  const link = document.createElement('a');
-  link.href = 'data:text/plain;charset=utf-8,' 
-  chat.history.forEach( (x) => { 
-    link.href += encodeURIComponent('### '+x.prompt+'\n\n'+x.result+'\n\n') 
-  } );  
-  link.download = fname||('chat-'+new Date().toISOString().substr(0,16))+'.md';
-  link.click();
-} 
+      /* Response badges */
+      .response-badge {
+        display: inline-block;
+        background: #3b82f6;
+        color: #fff;
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: bold;
+        margin-bottom: 8px;
+      }
+      .response-container {
+        margin: 16px 0;
+        padding: 12px;
+        background: #f8f9fa;
+        border-radius: 8px;
+        border-left: 4px solid #3b82f6;
+      }
 
-//================= main program ===================
-// display result when receiving message
-chat.onmessage = function (text) {
-  chat("message").innerHTML = 'receiving messages..'
-  chat("receiving").innerHTML = md.html(text + '<br><br>');
-}
+      @media print {
+        #menu,
+        #right,
+        #settingsModal {
+          display: none !important;
+        }
+        #left {
+          position: relative;
+          width: 100%;
+          left: 0px;
+          top: 0px;
+          border: none;
+          height: auto;
+          overflow: hidden;
+        }
+        .prompt {
+          border-bottom: 1px solid grey;
+        }
+      }
 
-// show whole conversation when message completed
-chat.oncomplete = (text) => {
-  let html1='', html2=''
-  chat("message").innerHTML = `(model: ${chat.model})`
-  chat.history.push( { prompt: chat.prompt, result: chat.result } )
-  
-  for (let i=0; i<chat.history.length; i++) {
-     html1 += '<h4 class=prompt id=prompt'+i+' ondblclick="chat.clipboard('+i+')" title="doubleclick to copy">' 
-     html1 += chat.history[i].prompt + '</h4>\n' + chat.history[i].result + '\n\n'
-     html2 += '<li onclick="location=this.title" title="#prompt' + i + '">' + chat.history[i].prompt
-  }
-  
-  html1 += '<div><button style="float:left" onclick="chat.redo()">Redo</button>'
-  html1 += '<button style="float:right" onclick="chat.speak()">🔊 speak</button>'
-  
-  chat("main").innerHTML = md.html(html1) + '<br></div>'
-  chat("list").innerHTML = html2
-  chat("left").scrollTop = chat("left").scrollHeight;
-  chat("btnSend").innerHTML = '<b>S</b>end'
-  
-  if (document.body.clientWidth > 800) {
-    chat('prompt').select()
-    chat('prompt').focus();
-  } else {
-    chat('prompt').value = ''
-  }  
-}
+      @media screen and (max-width: 880px) {
+        #list,
+        .desktop {
+          display: none !important;
+        }
+        #right {
+          position: absolute;
+          width: auto;
+          height: auto;
+          bottom: 10px;
+          left: 8px;
+          right: 70px;
+        }
+        #right textarea {
+          height: 1.2em;
+          padding: 10px;
+          overflow: auto;
+        }
+        #btnSend {
+          position: absolute;
+          height: 36px;
+          bottom: 12px;
+          right: 12px;
+        }
+        #left {
+          width: 97%;
+          height: calc(100vh - 154px);
+        }
+        #settingsContent {
+          width: 95%;
+          margin: 2% auto;
+          max-height: 96vh;
+        }
+      }
+    </style>
 
-// abort fetch request.
-chat.abort = () => { 
-  chat.controller.abort()
-  chat("receiving").innerHTML += '\n<font color=red>Message Aborted!</font>'
-  chat("receiving").id = 'abort';
-};
+    <header>
+      <div id="heading">
+        <div style="font-size: 24px; font-weight: 600; line-height: 1.2">
+          Multi-LLM Chat
+        </div>
+        <span
+          id="message"
+          style="
+            color: rgba(255, 255, 255, 0.85);
+            font-size: 13px;
+            font-weight: 400;
+          "
+        >
+          Multi-provider LLM chatbot
+        </span>
+      </div>
+      <div id="menu">
+        <button onclick="chat.showSettings()" title="Settings">
+          ⚙️ Settings
+        </button>
+        <button onclick="chat.recognition()" title="voice input">🎤</button>
+        <button onclick="chat.logout()" title="clear all data">Logout</button>
+        <button onclick="chat.export()" title="export conversation">
+          Export
+        </button>
+        <button
+          class="desktop"
+          onclick="chat.showPrompts()"
+          title="show prompts"
+        >
+          Prompts
+        </button>
+        <button
+          id="btnSend"
+          accesskey="s"
+          onclick="chat.submit()"
+          title="[Alt-S] submit prompt"
+        >
+          <b>S</b>end
+        </button>
+      </div>
+    </header>
 
-// submit prompt
-chat.submit = () => {
-  if (chat("btnSend").innerText === 'Stop..') {
-    chat.abort()
-    chat("btnSend").innerText = 'Send'
-  } else {
-    chat.stream( chat.prompt = chat('prompt').value )
-    chat("main").innerHTML += '<h4 class=prompt>' + chat.prompt + '</h4>\n<div id=receiving>Receiving....</div>'
-    chat("left").scrollTop = chat("left").scrollHeight;
-    chat("btnSend").innerText = 'Stop..'
-  }  
-}
+    <!-- Settings Modal -->
+    <div id="settingsModal">
+      <div id="settingsContent">
+        <div id="settingsHeader">
+          <h2>LLM Provider Settings</h2>
+          <button id="settingsClose" onclick="chat.hideSettings()">
+            &times;
+          </button>
+        </div>
+        <div id="settingsBody">
+          <div class="settings-section">
+            <h3>Add New Provider</h3>
+            <div class="provider-form">
+              <select id="providerTemplate" onchange="chat.onTemplateChange()">
+                <option value="custom">Custom Provider</option>
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic Claude</option>
+                <option value="gemini">Google Gemini</option>
+                <option value="deepseek">DeepSeek</option>
+                <option value="grok">xAI Grok</option>
+                <option value="kimi">Moonshot AI (Kimi)</option>
+                <option value="perplexity">Perplexity</option>
+                <option value="mistral">Mistral AI</option>
+              </select>
+              <input
+                type="text"
+                id="providerName"
+                placeholder="Provider Name (e.g., OpenAI, Claude)"
+              />
+              <input
+                type="text"
+                id="providerEndpoint"
+                placeholder="API Endpoint URL"
+              />
+              <input
+                type="password"
+                id="providerApiKey"
+                placeholder="API Key"
+              />
+              <input
+                type="text"
+                id="providerModel"
+                placeholder="Enter model name or select from template"
+                list="modelList"
+              />
+              <datalist id="modelList"></datalist>
+              <button onclick="chat.addProvider()">Add Provider</button>
+            </div>
+          </div>
+          <div class="settings-section">
+            <h3>Manage Providers</h3>
+            <div id="providersList"></div>
+          </div>
+          <div
+            class="settings-section"
+            style="
+              background: #fff3cd;
+              border: 1px solid #ffc107;
+              padding: 12px;
+              border-radius: 6px;
+              margin-top: 20px;
+            "
+          >
+            <h3 style="margin-top: 0; color: #856404">⚠️ CORS Limitations</h3>
+            <p style="margin: 8px 0; font-size: 13px; color: #856404">
+              <b>Note:</b> Some LLM APIs (like DeepSeek, Perplexity, Mistral)
+              don't allow direct browser requests due to CORS policies. These
+              providers require a server-side proxy to work.
+              <b>OpenAI, Anthropic Claude, and Google Gemini</b> typically work
+              from browsers.
+            </p>
+            <p style="margin: 8px 0; font-size: 12px; color: #856404">
+              If you see CORS errors, you'll need to set up a proxy server or
+              use only browser-compatible providers.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
 
-// show default prompt list
-chat.showPrompts = () => {
-  chat('list').innerHTML = chat.prompts
-  document.querySelectorAll('#list li').forEach( (element) => {
-    element.addEventListener('click', (event) => {
-      chat('prompt').value = element.innerText
-      chat('prompt').focus();
-    });
-  })
-};
+    <div id="content" style="margin: 8px; color: #112">
+      <div id="right">
+        <div id="llmSelector"></div>
+        <textarea
+          id="prompt"
+          rows="3"
+          placeholder="Enter your prompt here..."
+        ></textarea>
+        <div id="list" style="height: calc(100vh - 250px)">
+          <b>How to Use</b>
+          <ol style="padding-left: 20px; margin-top: 8px">
+            <li>
+              Click <b>Settings</b> to add LLM providers (OpenAI, Claude, etc.)
+            </li>
+            <li>Enter your API keys and select models</li>
+            <li>Check the boxes above to select which LLMs to use</li>
+            <li>Type your prompt and press <b>Send</b> or [Enter]</li>
+            <li>Compare responses from multiple LLMs side-by-side</li>
+          </ol>
+          <p style="margin-top: 12px; font-size: 12px; color: #666">
+            <b>Tips:</b> Use [Alt-S] to send, [Ctrl-P] to print, [Export] to
+            save conversation
+          </p>
+        </div>
+      </div>
+      <div id="left">
+        <div id="main" style="padding: 12px; max-width: 960px">
+          <h3>Welcome to Multi-LLM Chatbot.</h3>
+          <p class="desktop">
+            Please configure your LLM providers in Settings, then select which
+            ones to use for your queries.
+          </p>
+          <p>
+            [Ctrl-P] to print <br />[Export] to export conversation
+            <br />[Settings] to manage LLM providers
+          </p>
+        </div>
+      </div>
+    </div>
 
-chat.clipboard = (i) => {
-  navigator.clipboard.writeText( '### '+ chat.history[i].prompt + '\n\n' + chat.history[i].result )
-  chat("message").innerText = 'dialogue has been copied to clipboard'
-}
+    <script>
+      /*****************************************************************************
+       * casual-markdown - a lightweight regexp-base markdown parser with TOC support
+       * last updated on 2023/03/27, v0.91, some refinement for chatgpt markdown
+       *
+       * Copyright (c) 2022-2023, Casualwriter (MIT Licensed)
+       * https://github.com/casualwriter/casual-markdown
+       *****************************************************************************/
+      const md = {
+        yaml: {},
+        before: function (str) {
+          return str;
+        },
+        after: function (str) {
+          return str;
+        },
+      };
 
-// prompt for API key if not found in localStorage
-window.onload = () => {
-  chat.apiKey = localStorage.getItem('OPENAI_API_KEY');
-  if (!chat.apiKey || chat.apiKey.length < 10 ) {
-     chat.apiKey = prompt("Please input Secret API key (will store in local.storage)", "sk-");
-     localStorage.setItem('OPENAI_API_KEY', chat.apiKey)
-  }
-  chat.prompts = chat('list').innerHTML
-  chat.showPrompts()
-  chat('prompt').focus();
-}
+      md.formatTag = function (html) {
+        return html.replace(/</g, "&lt;").replace(/\>/g, "&gt;");
+      };
 
-// add submit hot-key of ctrl-enter
-document.addEventListener('keydown', function(event) {
-  if ( event.key==='Enter' && (chat.hotkey!='ctrl'||event.ctrlKey)) {
-    if (chat("btnSend").innerText === 'Send') { 
-      event.preventDefault(); chat.submit(); 
-    }
-  }  
-});
+      md.formatCode = function (match, title, block) {
+        block = block.replace(/</g, "&lt;").replace(/\>/g, "&gt;");
+        block = block
+          .replace(/\t/g, "   ")
+          .replace(/\^\^\^(.+?)\^\^\^/g, "<mark>$1</mark>");
 
-// [20230412] redo. submit latest prompt
-chat.redo = () => {
-  chat.history.pop()
-  chat('prompt').value = chat.prompt
-  chat.submit()
-}
+        if (title.toLowerCase(title) == "sql") {
+          block = block
+            .replace(/^\-\-(.*)/gm, "<rem>--$1</rem>")
+            .replace(/\s\-\-(.*)/gm, " <rem>--$1</rem>");
+          block = block.replace(
+            /(\s?)(function|procedure|return|if|then|else|end|loop|while|or|and|case|when)(\s)/gim,
+            "$1<b>$2</b>$3",
+          );
+          block = block.replace(
+            /(\s?)(select|update|delete|insert|create|from|where|group by|having|set)(\s)/gim,
+            "$1<b>$2</b>$3",
+          );
+        } else if ((title || "none") !== "none") {
+          block = block
+            .replace(/^\/\/(.*)/gm, "<rem>//$1</rem>")
+            .replace(/\s\/\/(.*)/gm, " <rem>//$1</rem>");
+          block = block.replace(
+            /(\s?)(function|procedure|return|if|then|else|end|loop|while|or|and|case|when)(\s)/gim,
+            "$1<b>$2</b>$3",
+          );
+          block = block.replace(
+            /(\s?)(var|let|const|for|next|do|while|loop|continue|break|switch|try|catch|finally)(\s)/gim,
+            "$1<b>$2</b>$3",
+          );
+        }
+        return (
+          '<pre title="' +
+          title +
+          '"><button onclick="md.clipboard(this)">copy</button><code>' +
+          block +
+          "</code></pre>"
+        );
+      };
 
-// speak the latest answer
-chat.speak = (i)  => {
-  if (window.speechSynthesis.speaking) {
-     window.speechSynthesis.cancel();
-  } else {
-    i = ( i>=0? i : chat.history.length-1 )
-    const utterance = new SpeechSynthesisUtterance(chat.history[i].result);
-    utterance.rate = 1.5;
-    window.speechSynthesis.speak(utterance);
-  }
-}
+      md.parser = function (mdstr) {
+        for (var name in this.yaml)
+          mdstr = mdstr.replace(
+            new RegExp("\{\{\\s*" + name + "\\s*\}\}", "gm"),
+            this.yaml[name],
+          );
 
-// voice recognition
-var SpeechRecognition = SpeechRecognition || webkitSpeechRecognition;
-chat.speech = new SpeechRecognition();
+        mdstr = mdstr.replace(
+          /\n(.+?)\n.*?\-\-\s?\|\s?\-\-.*?\n([\s\S]*?)\n\s*?\n/g,
+          function (m, p1, p2) {
+            var thead = p1
+              .replace(/^\|(.+)/gm, "$1")
+              .replace(/(.+)\|$/gm, "$1")
+              .replace(/\|/g, "<th>");
+            var tbody = p2
+              .replace(/^\|(.+)/gm, "$1")
+              .replace(/(.+)\|$/gm, "$1");
+            tbody = tbody
+              .replace(/(.+)/gm, "<tr><td>$1</td></tr>")
+              .replace(/\|/g, "<td>");
+            return (
+              "\n<table>\n<thead>\n<th>" +
+              thead +
+              "\n</thead>\n<tbody>" +
+              tbody +
+              "\n</tbody></table>\n\n"
+            );
+          },
+        );
 
-chat.speech.onresult = e => chat('prompt').value = e.results[0][0].transcript;
+        mdstr = mdstr
+          .replace(/^-{3,}|^\_{3,}|^\*{3,}$/gm, "<hr>")
+          .replace(/\n\n<hr\>/g, "\n<br><hr>");
 
-chat.recognition = () => {
-  chat.speech.start()
-  chat('prompt').value = 'Listening...'
-}   
-</script>
+        mdstr = mdstr
+          .replace(/^##### (.*?)\s*#*$/gm, "<h5>$1</h5>")
+          .replace(/^#### (.*?)\s*#*$/gm, "<h4>$1</h4>")
+          .replace(/^### (.*?)\s*#*$/gm, "<h3>$1</h3>")
+          .replace(/^## (.*?)\s*#*$/gm, "<h2>$1</h2>")
+          .replace(/^# (.*?)\s*#*$/gm, "<h1>$1</h1>")
+          .replace(
+            /^<h(\d)\>(.*?)\s*{(.*)}\s*<\/h\d\>$/gm,
+            '<h$1 id="$3">$2</h$1>',
+          );
+
+        mdstr = mdstr.replace(/``(.*?)``/gm, function (m, p) {
+          return "<code>" + md.formatTag(p).replace(/`/g, "&#96;") + "</code>";
+        });
+        mdstr = mdstr.replace(/`(.*?)`/gm, "<code>$1</code>");
+
+        mdstr = mdstr.replace(
+          /^\>\> (.*$)/gm,
+          "<blockquote><blockquote>$1</blockquote></blockquote>",
+        );
+        mdstr = mdstr.replace(/^\> (.*$)/gm, "<blockquote>$1</blockquote>");
+        mdstr = mdstr.replace(/<\/blockquote\>\n<blockquote\>/g, "\n<br>");
+        mdstr = mdstr.replace(/<\/blockquote\>\n<br\><blockquote\>/g, "\n<br>");
+
+        mdstr = mdstr.replace(
+          /!\[(.*?)\]\((.*?) "(.*?)"\)/gm,
+          '<img alt="$1" src="$2" $3 />',
+        );
+        mdstr = mdstr.replace(
+          /!\[(.*?)\]\((.*?)\)/gm,
+          '<img alt="$1" src="$2" width="90%" />',
+        );
+
+        mdstr = mdstr.replace(
+          /\[(.*?)\]\((.*?) "new"\)/gm,
+          '<a href="$2" target=_new>$1</a>',
+        );
+        mdstr = mdstr.replace(
+          /\[(.*?)\]\((.*?) "(.*?)"\)/gm,
+          '<a href="$2" title="$3">$1</a>',
+        );
+        mdstr = mdstr.replace(
+          /([<\s])(https?\:\/\/.*?)([\s\>])/gm,
+          '$1<a href="$2">$2</a>$3',
+        );
+        mdstr = mdstr.replace(/\[(.*?)\]\(\)/gm, '<a href="$1">$1</a>');
+        mdstr = mdstr.replace(/\[(.*?)\]\((.*?)\)/gm, '<a href="$2">$1</a>');
+
+        mdstr = mdstr.replace(/^[\*+-][ .](.*)/gm, "<ul><li>$1</li></ul>");
+        mdstr = mdstr.replace(/^\d\d?[ .](.*)/gm, "<ol><li>$1</li></ol>");
+        mdstr = mdstr.replace(
+          /^\s{2,6}[\*+-][ .](.*)/gm,
+          "<ul><ul><li>$1</li></ul></ul>",
+        );
+        mdstr = mdstr.replace(
+          /^\s{2,6}\d[ .](.*)/gm,
+          "<ul><ol><li>$1</li></ol></ul>",
+        );
+        mdstr = mdstr.replace(/<\/[ou]l\>\n\n?<[ou]l\>/g, "\n");
+        mdstr = mdstr.replace(/<\/[ou]l\>\n<[ou]l\>/g, "\n");
+
+        mdstr = mdstr.replace(
+          /\*\*\*(\w.*?[^\\])\*\*\*/gm,
+          "<b><em>$1</em></b>",
+        );
+        mdstr = mdstr.replace(/\*\*(\w.*?[^\\])\*\*/gm, "<b>$1</b>");
+        mdstr = mdstr.replace(/\*(\w.*?[^\\])\*/gm, "<em>$1</em>");
+        mdstr = mdstr.replace(/___(\w.*?[^\\])___/gm, "<b><em>$1</em></b>");
+        mdstr = mdstr.replace(/__(\w.*?[^\\])__/gm, "<u>$1</u>");
+        mdstr = mdstr.replace(/\^\^\^(.+?)\^\^\^/gm, "<mark>$1</mark>");
+        mdstr = mdstr.replace(/\^\^(\w.*?)\^\^/gm, "<ins>$1</ins>");
+        mdstr = mdstr.replace(/~~(\w.*?)~~/gm, "<del>$1</del>");
+
+        mdstr = mdstr
+          .replace(/  \n/g, "\n<br/>")
+          .replace(/\n\s*\n/g, "\n<p>\n");
+
+        mdstr = mdstr.replace(/^ {4,10}(.*)/gm, function (m, p) {
+          return "<pre><code>" + md.formatTag(p) + "</code></pre>";
+        });
+        mdstr = mdstr.replace(/^\t(.*)/gm, function (m, p) {
+          return "<pre><code>" + md.formatTag(p) + "</code></pre>";
+        });
+        mdstr = mdstr.replace(/<\/code\><\/pre\>\n<pre\><code\>/g, "\n");
+
+        return mdstr.replace(/\\([`_~\*\+\-\.\^\\\<\>\(\)\[\]])/gm, "$1");
+      };
+
+      md.html = function (mdText) {
+        mdText = mdText
+          .replace(/\r\n/g, "\n")
+          .replace(/^---+\s*\n([\s\S]*?)\n---+\s*\n/, md.formatYAML);
+        mdText = mdText
+          .replace(/\n~~~/g, "\n```")
+          .replace(/\n``` *(.*?)\n([\s\S]*?)\n``` *\n/g, md.formatCode);
+
+        var pos1 = 0,
+          pos2 = 0,
+          mdHTML = "";
+        while ((pos1 = mdText.indexOf("<code>")) >= 0) {
+          pos2 = mdText.indexOf("</code>", pos1);
+          mdHTML += md.after(md.parser(md.before(mdText.substr(0, pos1))));
+          mdHTML += mdText.substr(
+            pos1,
+            pos2 > 0 ? pos2 - pos1 + 7 : mdtext.length,
+          );
+          mdText = mdText.substr(pos2 + 7);
+        }
+
+        return (
+          '<div class="markdown">' +
+          mdHTML +
+          md.after(md.parser(md.before(mdText))) +
+          "</div>"
+        );
+      };
+
+      md.clipboard = (e) => {
+        navigator.clipboard.writeText(
+          e.parentNode.innerText.replace("copy\n", ""),
+        );
+        e.innerText = "copied";
+      };
+
+      /*****************************************************************************
+       * Multi-LLM Chat System
+       *****************************************************************************/
+
+      const chat = (id) => window.document.getElementById(id);
+
+      // Default provider templates (from cross-llm-mcp)
+      chat.providerTemplates = {
+        openai: {
+          name: "OpenAI",
+          endpoint: "https://api.openai.com/v1/chat/completions",
+          models: [
+            "gpt-4o",
+            "gpt-4o-mini",
+            "gpt-4-turbo",
+            "gpt-4",
+            "gpt-3.5-turbo",
+            "o1-preview",
+            "o1-mini",
+          ],
+          authType: "bearer",
+          bodyTemplate: {
+            model: "",
+            messages: [],
+            temperature: 0.8,
+            stream: true,
+          },
+        },
+        anthropic: {
+          name: "Anthropic Claude",
+          endpoint: "https://api.anthropic.com/v1/messages",
+          models: [
+            "claude-3.5-sonnet-20241022",
+            "claude-3-opus-20240229",
+            "claude-3-sonnet-20240229",
+            "claude-3-haiku-20240307",
+          ],
+          authType: "x-api-key",
+          bodyTemplate: { model: "", messages: [], max_tokens: 4096 },
+        },
+        gemini: {
+          name: "Google Gemini",
+          endpoint:
+            "https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent",
+          models: [
+            "gemini-2.5-flash",
+            "gemini-2.0-flash-exp",
+            "gemini-1.5-pro",
+            "gemini-1.5-flash",
+            "gemini-pro",
+          ],
+          authType: "query",
+          bodyTemplate: { contents: [{ parts: [{ text: "" }] }] },
+        },
+        deepseek: {
+          name: "DeepSeek",
+          endpoint: "https://api.deepseek.com/v1/chat/completions",
+          models: [
+            "deepseek-r1",
+            "deepseek-r1-distill-qwen-32b",
+            "deepseek-r1-distill-qwen-14b",
+            "deepseek-r1-distill-llama-70b",
+            "deepseek-r1-distill-qwen-7b",
+            "deepseek-r1-distill-llama-8b",
+            "deepseek-r1-distill-qwen-1.5b",
+            "deepseek-chat",
+            "deepseek-coder",
+          ],
+          authType: "bearer",
+          bodyTemplate: {
+            model: "",
+            messages: [],
+            temperature: 0.8,
+            stream: true,
+          },
+        },
+        grok: {
+          name: "xAI Grok",
+          endpoint: "https://api.x.ai/v1/chat/completions",
+          models: ["grok-3", "grok-2", "grok-beta"],
+          authType: "bearer",
+          bodyTemplate: {
+            model: "",
+            messages: [],
+            temperature: 0.8,
+            stream: true,
+          },
+        },
+        kimi: {
+          name: "Moonshot AI (Kimi)",
+          endpoint: "https://api.moonshot.ai/v1/chat/completions",
+          models: ["moonshot-v1-128k", "moonshot-v1-32k", "moonshot-v1-8k"],
+          authType: "bearer",
+          bodyTemplate: {
+            model: "",
+            messages: [],
+            temperature: 0.8,
+            stream: true,
+          },
+        },
+        perplexity: {
+          name: "Perplexity",
+          endpoint: "https://api.perplexity.ai/chat/completions",
+          models: ["sonar-pro", "sonar-medium-online", "sonar-small-online"],
+          authType: "bearer",
+          bodyTemplate: {
+            model: "",
+            messages: [],
+            temperature: 0.8,
+            stream: true,
+          },
+        },
+        mistral: {
+          name: "Mistral AI",
+          endpoint: "https://api.mistral.ai/v1/chat/completions",
+          models: [
+            "mistral-large-latest",
+            "mistral-medium-latest",
+            "mistral-small-latest",
+            "pixtral-large-latest",
+          ],
+          authType: "bearer",
+          bodyTemplate: {
+            model: "",
+            messages: [],
+            temperature: 0.8,
+            stream: true,
+          },
+        },
+      };
+
+      chat.history = [];
+      chat.activeLLMs = [];
+      chat.providers = [];
+
+      // Load providers from localStorage
+      chat.loadProviders = () => {
+        const stored = localStorage.getItem("llm_providers");
+        chat.providers = stored ? JSON.parse(stored) : [];
+        const active = localStorage.getItem("active_llms");
+        chat.activeLLMs = active ? JSON.parse(active) : [];
+        chat.updateLLMSelector();
+        chat.updateProvidersList();
+      };
+
+      // Save providers to localStorage
+      chat.saveProviders = () => {
+        localStorage.setItem("llm_providers", JSON.stringify(chat.providers));
+        localStorage.setItem("active_llms", JSON.stringify(chat.activeLLMs));
+      };
+
+      // Get provider API key
+      chat.getProviderAPIKey = (providerId) => {
+        return localStorage.getItem(`api_key_${providerId}`) || "";
+      };
+
+      // Save provider API key
+      chat.saveProviderAPIKey = (providerId, apiKey) => {
+        localStorage.setItem(`api_key_${providerId}`, apiKey);
+      };
+
+      // Get provider model
+      chat.getProviderModel = (providerId) => {
+        return localStorage.getItem(`model_${providerId}`) || "";
+      };
+
+      // Save provider model
+      chat.saveProviderModel = (providerId, model) => {
+        localStorage.setItem(`model_${providerId}`, model);
+      };
+
+      // Add provider
+      chat.addProvider = () => {
+        const template = chat("providerTemplate").value;
+        const name = chat("providerName").value.trim();
+        const endpoint = chat("providerEndpoint").value.trim();
+        const apiKey = chat("providerApiKey").value.trim();
+        const model = chat("providerModel").value;
+
+        if (!name || !endpoint || !apiKey || !model) {
+          alert("Please fill in all fields");
+          return;
+        }
+
+        const providerId = name.toLowerCase().replace(/\s+/g, "_");
+
+        // Check if provider already exists
+        if (chat.providers.find((p) => p.id === providerId)) {
+          alert("Provider with this name already exists");
+          return;
+        }
+
+        const provider = {
+          id: providerId,
+          name: name,
+          endpoint: endpoint,
+          template: template,
+        };
+
+        chat.providers.push(provider);
+        chat.saveProviderAPIKey(providerId, apiKey);
+        chat.saveProviderModel(providerId, model);
+        chat.saveProviders();
+
+        // Clear form
+        const nameEl = chat("providerName");
+        const endpointEl = chat("providerEndpoint");
+        const apiKeyEl = chat("providerApiKey");
+        const modelEl = chat("providerModel");
+        const templateEl = chat("providerTemplate");
+        if (nameEl) nameEl.value = "";
+        if (endpointEl) endpointEl.value = "";
+        if (apiKeyEl) apiKeyEl.value = "";
+        if (modelEl) modelEl.value = "";
+        if (templateEl) templateEl.value = "custom";
+
+        chat.updateProvidersList();
+        chat.updateLLMSelector();
+        alert("Provider added successfully!");
+      };
+
+      // Delete provider
+      chat.deleteProvider = (providerId) => {
+        if (confirm("Delete this provider?")) {
+          chat.providers = chat.providers.filter((p) => p.id !== providerId);
+          chat.activeLLMs = chat.activeLLMs.filter((id) => id !== providerId);
+          localStorage.removeItem(`api_key_${providerId}`);
+          localStorage.removeItem(`model_${providerId}`);
+          chat.saveProviders();
+          chat.updateProvidersList();
+          chat.updateLLMSelector();
+        }
+      };
+
+      // Edit provider
+      chat.editProvider = (providerId) => {
+        const provider = chat.providers.find((p) => p.id === providerId);
+        if (!provider) return;
+
+        const newApiKey = prompt(
+          "Enter new API key:",
+          chat.getProviderAPIKey(providerId),
+        );
+        if (newApiKey !== null) {
+          chat.saveProviderAPIKey(providerId, newApiKey);
+        }
+
+        const template =
+          chat.providerTemplates[provider.template] ||
+          chat.providerTemplates.openai;
+        const currentModel = chat.getProviderModel(providerId);
+        const modelOptions = template.models
+          .map(
+            (m) =>
+              `<option value="${m}" ${m === currentModel ? "selected" : ""}>${m}</option>`,
+          )
+          .join("");
+        const newModel = prompt(
+          `Select model:\n${template.models.map((m, i) => `${i + 1}. ${m}`).join("\n")}\n\nEnter number:`,
+          template.models.indexOf(currentModel) + 1,
+        );
+
+        if (newModel !== null && !isNaN(newModel)) {
+          const modelIndex = parseInt(newModel) - 1;
+          if (modelIndex >= 0 && modelIndex < template.models.length) {
+            chat.saveProviderModel(providerId, template.models[modelIndex]);
+            chat.updateProvidersList();
+            chat.updateLLMSelector();
+          }
+        }
+      };
+
+      // Update providers list in settings
+      chat.updateProvidersList = () => {
+        const list = chat("providersList");
+        if (chat.providers.length === 0) {
+          list.innerHTML =
+            '<p style="color:#666; font-style:italic;">No providers added yet. Add one above.</p>';
+          return;
+        }
+
+        list.innerHTML = chat.providers
+          .map((provider) => {
+            const model = chat.getProviderModel(provider.id);
+            return `
+      <div class="provider-item">
+        <div class="provider-item-info">
+          <div class="provider-item-name">${provider.name}</div>
+          <div class="provider-item-model">Model: ${model || "Not set"}</div>
+        </div>
+        <div class="provider-item-actions">
+          <button class="btn-edit" onclick="chat.editProvider('${provider.id}')">Edit</button>
+          <button class="btn-delete" onclick="chat.deleteProvider('${provider.id}')">Delete</button>
+        </div>
+      </div>
+    `;
+          })
+          .join("");
+      };
+
+      // Update LLM selector
+      chat.updateLLMSelector = () => {
+        const selector = chat("llmSelector");
+        if (chat.providers.length === 0) {
+          selector.innerHTML =
+            '<p style="color:#999; font-size:12px; margin:0;">No LLM providers configured. <a href="#" onclick="chat.showSettings(); return false;" style="color:#3b82f6;">Add one in Settings</a></p>';
+          return;
+        }
+
+        selector.innerHTML =
+          '<div style="margin-bottom:8px; font-weight:bold; color:#333;">Select LLM(s):</div>' +
+          chat.providers
+            .map((provider) => {
+              const checked = chat.activeLLMs.includes(provider.id)
+                ? "checked"
+                : "";
+              return `
+        <label style="display:inline-block; margin:4px 8px 4px 0; padding:6px 12px; background:${checked ? "#dbeafe" : "#f8f9fa"}; border:1px solid ${checked ? "#3b82f6" : "#e0e0e0"}; border-radius:6px; cursor:pointer;">
+          <input type="checkbox" value="${provider.id}" ${checked} onchange="chat.toggleLLM('${provider.id}')" style="margin-right:6px;">
+          <span>${provider.name} (${chat.getProviderModel(provider.id) || "no model"})</span>
+        </label>
+      `;
+            })
+            .join("");
+      };
+
+      // Toggle LLM selection
+      chat.toggleLLM = (providerId) => {
+        const index = chat.activeLLMs.indexOf(providerId);
+        if (index > -1) {
+          chat.activeLLMs.splice(index, 1);
+        } else {
+          chat.activeLLMs.push(providerId);
+        }
+        chat.saveProviders();
+        chat.updateLLMSelector();
+      };
+
+      // Template change handler
+      chat.onTemplateChange = () => {
+        const template = chat("providerTemplate").value;
+        const modelSelect = chat("providerModel");
+
+        if (template === "custom") {
+          chat("providerName").value = "";
+          chat("providerEndpoint").value = "";
+          chat("providerModel").value = "";
+          chat("providerModel").placeholder = "Enter model name manually";
+          const modelList = chat("modelList");
+          if (modelList) modelList.innerHTML = "";
+          return;
+        }
+
+        const config = chat.providerTemplates[template];
+        if (config) {
+          chat("providerName").value = config.name;
+          chat("providerEndpoint").value = config.endpoint;
+          chat("providerModel").placeholder = "Select or type model name";
+          const modelList = chat("modelList");
+          if (modelList) {
+            modelList.innerHTML = config.models
+              .map((m) => `<option value="${m}">${m}</option>`)
+              .join("");
+          }
+        }
+      };
+
+      // Show settings
+      chat.showSettings = () => {
+        chat("settingsModal").style.display = "block";
+        chat.updateProvidersList();
+      };
+
+      // Hide settings
+      chat.hideSettings = () => {
+        chat("settingsModal").style.display = "none";
+      };
+
+      // Close modal on outside click
+      window.onclick = (event) => {
+        if (event.target.id === "settingsModal") {
+          chat.hideSettings();
+        }
+      };
+
+      // Stream to a single LLM
+      chat.streamToLLM = function (prompt, providerId) {
+        return new Promise((resolve, reject) => {
+          const provider = chat.providers.find((p) => p.id === providerId);
+          if (!provider) {
+            reject(new Error(`Provider ${providerId} not found`));
+            return;
+          }
+
+          const apiKey = chat.getProviderAPIKey(providerId);
+          const model = chat.getProviderModel(providerId);
+
+          if (!apiKey || !model) {
+            reject(new Error(`API key or model not set for ${provider.name}`));
+            return;
+          }
+
+          const template =
+            chat.providerTemplates[provider.template] ||
+            chat.providerTemplates.openai;
+          let endpoint = provider.endpoint;
+          let headers = { "Content-Type": "application/json" };
+          let body = {};
+
+          // Configure based on provider type
+          if (
+            provider.template === "openai" ||
+            provider.template === "deepseek" ||
+            provider.template === "grok" ||
+            provider.template === "kimi" ||
+            provider.template === "perplexity" ||
+            provider.template === "mistral"
+          ) {
+            // OpenAI-compatible providers (OpenAI, DeepSeek, Grok, Kimi, Perplexity, Mistral)
+            headers["Authorization"] = `Bearer ${apiKey}`;
+            body = {
+              model: model,
+              messages: [{ role: "user", content: prompt }],
+              temperature: 0.8,
+              stream: true,
+            };
+
+            // Add history for OpenAI-compatible providers
+            for (
+              let i = chat.history.length - 1;
+              i >= 0 && i > chat.history.length - 3;
+              i--
+            ) {
+              body.messages.unshift({
+                role: "assistant",
+                content: chat.history[i].results[providerId] || "",
+              });
+              body.messages.unshift({
+                role: "user",
+                content: chat.history[i].prompt,
+              });
+            }
+          } else if (provider.template === "anthropic") {
+            headers["x-api-key"] = apiKey;
+            headers["anthropic-version"] = "2023-06-01";
+            headers["content-type"] = "application/json";
+            body = {
+              model: model,
+              messages: [{ role: "user", content: prompt }],
+              max_tokens: 4096,
+              stream: true,
+            };
+          } else if (provider.template === "gemini") {
+            endpoint = endpoint.replace("{model}", model) + `?key=${apiKey}`;
+            headers = { "Content-Type": "application/json" };
+            body = {
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: {
+                temperature: 0.8,
+                maxOutputTokens: 2048,
+              },
+            };
+          } else {
+            // Custom provider - basic OpenAI-like format
+            headers["Authorization"] = `Bearer ${apiKey}`;
+            body = {
+              model: model,
+              messages: [{ role: "user", content: prompt }],
+              stream: true,
+            };
+          }
+
+          const controller = new AbortController();
+          let result = "";
+          const divId = `receiving_${providerId}`;
+          const updateUI = () => {
+            if (chat(divId)) {
+              chat(divId).innerHTML =
+                `<span class="response-badge">${provider.name}</span>` +
+                md.html(result + "<br><br>");
+            }
+          };
+
+          // All providers use streaming (except custom handling)
+          fetch(endpoint, {
+            method: "POST",
+            headers: headers,
+            body: JSON.stringify(body),
+            signal: controller.signal,
+            mode: "cors",
+          })
+            .then((response) => {
+              if (!response.ok) {
+                if (response.status == 401)
+                  throw new Error(
+                    `401 Unauthorized - Invalid API Key for ${provider.name}`,
+                  );
+                if (response.status == 0)
+                  throw new Error(
+                    `CORS Error - ${provider.name} API doesn't allow browser requests. This API may require a server-side proxy.`,
+                  );
+                throw new Error(
+                  `Failed to get data from ${provider.name}, status ${response.status}`,
+                );
+              }
+              return response.body
+                .pipeThrough(new TextDecoderStream())
+                .getReader();
+            })
+            .then((reader) => {
+              function processText({ done, value }) {
+                if (done) {
+                  resolve({ providerId, providerName: provider.name, result });
+                  return;
+                }
+
+                const lines = value.split("\n");
+                for (let i in lines) {
+                  if (lines[i].length === 0) continue;
+                  if (lines[i].startsWith(":")) continue;
+
+                  // Handle different completion markers
+                  if (
+                    lines[i] === "data: [DONE]" ||
+                    lines[i] === "event: message_stop"
+                  ) {
+                    resolve({
+                      providerId,
+                      providerName: provider.name,
+                      result,
+                    });
+                    return;
+                  }
+
+                  if (lines[i].startsWith("data: ")) {
+                    try {
+                      const json = JSON.parse(lines[i].substring(6));
+
+                      // OpenAI format
+                      if (json.choices && json.choices[0]) {
+                        const content =
+                          json.choices[0].delta?.content ||
+                          json.choices[0].message?.content ||
+                          "";
+                        if (content) {
+                          result += content;
+                          updateUI();
+                        }
+                      }
+                      // Anthropic format
+                      else if (
+                        json.type === "content_block_delta" &&
+                        json.delta?.text
+                      ) {
+                        result += json.delta.text;
+                        updateUI();
+                      } else if (
+                        json.type === "content_block" &&
+                        json.content_block?.text
+                      ) {
+                        result += json.content_block.text;
+                        updateUI();
+                      }
+                      // Gemini format
+                      else if (json.candidates && json.candidates[0]) {
+                        const candidate = json.candidates[0];
+                        if (candidate.content && candidate.content.parts) {
+                          candidate.content.parts.forEach((part) => {
+                            if (part.text) {
+                              result += part.text;
+                              updateUI();
+                            }
+                          });
+                        }
+                      }
+                    } catch (e) {
+                      // Skip invalid JSON
+                    }
+                  }
+                }
+
+                return reader.read().then(processText);
+              }
+              return reader.read().then(processText);
+            })
+            .catch((error) => {
+              let errorMsg = error.message;
+              if (
+                error.name === "TypeError" &&
+                error.message.includes("fetch")
+              ) {
+                errorMsg = `CORS Error - ${provider.name} API doesn't allow direct browser requests. This API requires a server-side proxy or CORS-enabled endpoint.`;
+              } else if (
+                error.message.includes("Failed to fetch") ||
+                error.message.includes("NetworkError")
+              ) {
+                errorMsg = `Network/CORS Error - ${provider.name} API may not support browser requests. Consider using a proxy server.`;
+              }
+              reject({
+                providerId,
+                providerName: provider.name,
+                error: errorMsg,
+              });
+            });
+        });
+      };
+
+      // Stream to multiple LLMs
+      chat.streamMulti = function (prompt) {
+        if (chat.activeLLMs.length === 0) {
+          alert("Please select at least one LLM provider in Settings");
+          return;
+        }
+
+        chat.prompt = prompt;
+        chat("main").innerHTML += "<h4 class=prompt>" + prompt + "</h4>\n";
+
+        const promises = chat.activeLLMs.map((providerId) =>
+          chat.streamToLLM(prompt, providerId),
+        );
+        const receivingDivs = {};
+
+        chat.activeLLMs.forEach((providerId) => {
+          const provider = chat.providers.find((p) => p.id === providerId);
+          const divId = `receiving_${providerId}`;
+          receivingDivs[providerId] = divId;
+          chat("main").innerHTML +=
+            `<div id="${divId}" class="response-container"><span class="response-badge">${provider.name}</span><div>Receiving...</div></div>`;
+        });
+
+        chat("left").scrollTop = chat("left").scrollHeight;
+        chat("btnSend").innerText = "Stop..";
+
+        Promise.allSettled(promises).then((results) => {
+          const responses = {};
+          results.forEach((result, index) => {
+            const providerId = chat.activeLLMs[index];
+            const divId = receivingDivs[providerId];
+
+            if (result.status === "fulfilled") {
+              const { providerName, result: text } = result.value;
+              responses[providerId] = text;
+              chat(divId).innerHTML =
+                `<span class="response-badge">${providerName}</span>` +
+                md.html(text);
+            } else {
+              const { providerName, error } = result.reason;
+              chat(divId).innerHTML =
+                `<span class="response-badge" style="background:#dc3545;">${providerName}</span><div style="color:#dc3545;">Error: ${error}</div>`;
+            }
+          });
+
+          chat.history.push({
+            prompt: prompt,
+            results: responses,
+            providers: chat.activeLLMs.map(
+              (id) => chat.providers.find((p) => p.id === id).name,
+            ),
+          });
+
+          chat.updateHistoryDisplay();
+          chat("btnSend").innerText = "Send";
+
+          if (document.body.clientWidth > 800) {
+            chat("prompt").select();
+            chat("prompt").focus();
+          } else {
+            chat("prompt").value = "";
+          }
+        });
+      };
+
+      // Update history display
+      chat.updateHistoryDisplay = () => {
+        let html1 = "",
+          html2 = "";
+
+        for (let i = 0; i < chat.history.length; i++) {
+          const entry = chat.history[i];
+          html1 +=
+            "<h4 class=prompt id=prompt" +
+            i +
+            ' ondblclick="chat.clipboard(' +
+            i +
+            ')" title="doubleclick to copy">' +
+            entry.prompt +
+            "</h4>\n";
+
+          if (entry.results) {
+            Object.keys(entry.results).forEach((providerId) => {
+              const provider = chat.providers.find((p) => p.id === providerId);
+              html1 +=
+                `<div class="response-container"><span class="response-badge">${provider ? provider.name : providerId}</span>` +
+                md.html(entry.results[providerId]) +
+                "</div>\n";
+            });
+          } else {
+            html1 += md.html(entry.result || "") + "\n";
+          }
+
+          html2 +=
+            '<li onclick="location=this.title" title="#prompt' +
+            i +
+            '">' +
+            entry.prompt +
+            "</li>";
+        }
+
+        html1 +=
+          '<div><button style="float:left" onclick="chat.redo()">Redo</button>';
+        html1 +=
+          '<button style="float:right" onclick="chat.speak()">🔊 speak</button>';
+
+        chat("main").innerHTML = md.html(html1) + "<br></div>";
+        chat("list").innerHTML = html2;
+        chat("left").scrollTop = chat("left").scrollHeight;
+      };
+
+      // Submit prompt
+      chat.submit = () => {
+        if (chat("btnSend").innerText === "Stop..") {
+          chat("btnSend").innerText = "Send";
+          return;
+        }
+
+        const prompt = chat("prompt").value.trim();
+        if (!prompt) return;
+
+        chat.streamMulti(prompt);
+      };
+
+      // Export conversation
+      chat.export = (fname) => {
+        const link = document.createElement("a");
+        let content = "";
+
+        chat.history.forEach((x, i) => {
+          content += `### ${x.prompt}\n\n`;
+          if (x.results) {
+            Object.keys(x.results).forEach((providerId) => {
+              const provider = chat.providers.find((p) => p.id === providerId);
+              content += `**${provider ? provider.name : providerId}:**\n\n${x.results[providerId]}\n\n`;
+            });
+          } else {
+            content += `${x.result}\n\n`;
+          }
+        });
+
+        link.href =
+          "data:text/plain;charset=utf-8," + encodeURIComponent(content);
+        link.download =
+          fname || "chat-" + new Date().toISOString().substr(0, 16) + ".md";
+        link.click();
+      };
+
+      // Logout
+      chat.logout = () => {
+        if (confirm("Logout and clear all data?")) {
+          localStorage.clear();
+          chat.providers = [];
+          chat.activeLLMs = [];
+          chat.history = [];
+          chat.updateProvidersList();
+          chat.updateLLMSelector();
+          chat("main").innerHTML =
+            "<h3>Welcome to Multi-LLM Chatbot.</h3><p>Please configure your LLM providers in Settings.</p>";
+        }
+      };
+
+      // Clipboard
+      chat.clipboard = (i) => {
+        const entry = chat.history[i];
+        let text = `### ${entry.prompt}\n\n`;
+        if (entry.results) {
+          Object.keys(entry.results).forEach((providerId) => {
+            const provider = chat.providers.find((p) => p.id === providerId);
+            text += `**${provider ? provider.name : providerId}:**\n\n${entry.results[providerId]}\n\n`;
+          });
+        } else {
+          text += entry.result;
+        }
+        navigator.clipboard.writeText(text);
+        chat("message").innerText = "dialogue has been copied to clipboard";
+      };
+
+      // Redo
+      chat.redo = () => {
+        if (chat.history.length > 0) {
+          chat.history.pop();
+          chat.updateHistoryDisplay();
+          chat("prompt").value = chat.prompt;
+          chat.submit();
+        }
+      };
+
+      // Speak
+      chat.speak = (i) => {
+        if (window.speechSynthesis.speaking) {
+          window.speechSynthesis.cancel();
+        } else {
+          i = i >= 0 ? i : chat.history.length - 1;
+          if (i >= 0 && chat.history[i]) {
+            const entry = chat.history[i];
+            let text = "";
+            if (entry.results) {
+              text = Object.values(entry.results).join("\n\n");
+            } else {
+              text = entry.result || "";
+            }
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.rate = 1.5;
+            window.speechSynthesis.speak(utterance);
+          }
+        }
+      };
+
+      // Show prompts
+      chat.showPrompts = () => {
+        chat("list").innerHTML = chat.prompts;
+        document.querySelectorAll("#list li").forEach((element) => {
+          element.addEventListener("click", (event) => {
+            chat("prompt").value = element.innerText;
+            chat("prompt").focus();
+          });
+        });
+      };
+
+      // Voice recognition
+      var SpeechRecognition = SpeechRecognition || webkitSpeechRecognition;
+      chat.speech = new SpeechRecognition();
+      chat.speech.onresult = (e) =>
+        (chat("prompt").value = e.results[0][0].transcript);
+      chat.recognition = () => {
+        chat.speech.start();
+        chat("prompt").value = "Listening...";
+      };
+
+      // Initialize on load
+      window.onload = () => {
+        chat.loadProviders();
+        chat.prompts = chat("list").innerHTML;
+        chat.showPrompts();
+        chat("prompt").focus();
+
+        // Migrate old API key if exists
+        const oldKey = localStorage.getItem("OPENAI_API_KEY");
+        if (oldKey && chat.providers.length === 0) {
+          if (
+            confirm(
+              "Found old API key. Would you like to migrate it to a new OpenAI provider?",
+            )
+          ) {
+            chat.providers.push({
+              id: "openai",
+              name: "OpenAI",
+              endpoint: "https://api.openai.com/v1/chat/completions",
+              template: "openai",
+            });
+            chat.saveProviderAPIKey("openai", oldKey);
+            chat.saveProviderModel("openai", "gpt-3.5-turbo");
+            chat.activeLLMs.push("openai");
+            chat.saveProviders();
+            chat.updateProvidersList();
+            chat.updateLLMSelector();
+          }
+        }
+      };
+
+      // Hotkey support
+      chat.hotkey = "enter";
+      document.addEventListener("keydown", function (event) {
+        if (
+          event.key === "Enter" &&
+          (chat.hotkey !== "ctrl" || event.ctrlKey)
+        ) {
+          if (chat("btnSend").innerText === "Send") {
+            event.preventDefault();
+            chat.submit();
+          }
+        }
+      });
+    </script>
+  </body>
+</html>
