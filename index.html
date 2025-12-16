@@ -429,26 +429,41 @@
         header {
           padding: 10px 12px;
           min-height: auto;
+          position: sticky;
+          top: 0;
+          z-index: 200;
         }
         #heading {
           font-size: 18px;
+          line-height: 1.2;
         }
         #heading span {
           font-size: 11px;
+          display: block;
+          margin-top: 2px;
         }
         #menu {
-          gap: 4px;
+          gap: 6px;
+          flex-wrap: wrap;
+          justify-content: flex-end;
         }
         #menu button {
-          padding: 6px 10px;
+          padding: 8px 12px;
           font-size: 12px;
-          min-height: 32px;
+          min-height: 36px;
+          min-width: 36px;
+          flex-shrink: 0;
+        }
+        #menu button#btnSend {
+          min-width: 60px;
+          font-weight: 600;
         }
         #content {
           flex-direction: column;
-          height: calc(100vh - 120px);
-          gap: 8px;
-          margin: 8px;
+          height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 100px);
+          gap: 0;
+          margin: 0;
+          padding: 8px;
         }
         #list,
         .desktop {
@@ -465,8 +480,10 @@
           background: #fff;
           border-top: 1px solid #e0e0e0;
           padding: 12px;
+          padding-bottom: calc(12px + env(safe-area-inset-bottom));
           box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
           z-index: 100;
+          box-sizing: border-box;
         }
         #right textarea {
           width: calc(100% - 80px);
@@ -476,28 +493,63 @@
           font-size: 16px;
           border-radius: 8px;
           resize: none;
+          box-sizing: border-box;
+          line-height: 1.5;
         }
         #btnSend {
           position: absolute;
-          bottom: 20px;
-          right: 20px;
+          bottom: calc(12px + env(safe-area-inset-bottom));
+          right: 12px;
           height: 44px;
           min-width: 60px;
           padding: 10px 16px;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
         #left {
           width: 100%;
           height: 100%;
-          margin-bottom: 80px;
+          margin-bottom: calc(90px + env(safe-area-inset-bottom));
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
+          padding-bottom: 8px;
         }
         #llmSelector {
-          margin-bottom: 8px;
+          margin-bottom: 10px;
+          padding: 10px;
+          background: #f8f9fa;
+          border-radius: 8px;
+          border: 1px solid #e0e0e0;
+        }
+        #llmSelector > div:first-child {
+          font-size: 13px;
+          font-weight: 600;
+          margin-bottom: 10px;
+          color: #333;
+          padding: 4px 0;
         }
         #llmSelector label {
-          display: block;
-          margin: 4px 0;
-          padding: 8px 12px;
-          font-size: 13px;
+          display: flex;
+          align-items: center;
+          margin: 8px 0;
+          padding: 12px;
+          font-size: 14px;
+          min-height: 48px;
+          box-sizing: border-box;
+          touch-action: manipulation;
+          background: #fff;
+          border: 1px solid #e0e0e0;
+          border-radius: 6px;
+          transition: all 0.2s ease;
+        }
+        #llmSelector label:active {
+          background: #e9ecef;
+          transform: scale(0.98);
+        }
+        #llmSelector input[type="checkbox"] {
+          margin-right: 10px;
+          width: 20px;
+          height: 20px;
+          flex-shrink: 0;
         }
         #settingsContent {
           width: 95%;
@@ -535,46 +587,68 @@
         }
         #heading {
           font-size: 16px;
+          line-height: 1.2;
         }
         #heading span {
           font-size: 10px;
         }
         #menu {
-          gap: 3px;
+          gap: 4px;
         }
         #menu button {
-          padding: 6px 8px;
+          padding: 8px 10px;
           font-size: 11px;
+          min-height: 36px;
         }
         #menu button:not(#btnSend) {
-          padding: 6px;
+          padding: 8px;
+          min-width: 36px;
         }
         #menu button[title="voice input"],
         #menu button[title="clear all data"],
         #menu button[title="export conversation"] {
-          font-size: 18px;
-          padding: 6px 10px;
+          font-size: 20px;
+          padding: 8px;
+        }
+        #menu button[title="Settings"] {
+          font-size: 16px;
+        }
+        #content {
+          padding: 6px;
         }
         #right {
           padding: 10px;
+          padding-bottom: calc(10px + env(safe-area-inset-bottom));
         }
         #right textarea {
           width: calc(100% - 70px);
           padding: 10px;
           font-size: 16px;
+          min-height: 44px;
         }
         #btnSend {
-          bottom: 18px;
-          right: 18px;
-          height: 40px;
-          min-width: 55px;
-          padding: 8px 12px;
-          font-size: 11px;
+          bottom: calc(10px + env(safe-area-inset-bottom));
+          right: 10px;
+          height: 44px;
+          min-width: 60px;
+          padding: 8px 14px;
+          font-size: 12px;
+        }
+        #left {
+          margin-bottom: calc(85px + env(safe-area-inset-bottom));
+        }
+        #llmSelector {
+          padding: 6px;
+        }
+        #llmSelector label {
+          padding: 10px;
+          font-size: 13px;
         }
         #settingsContent {
           width: 98%;
-          margin: 2% auto;
-          max-height: 95vh;
+          margin: 1% auto;
+          max-height: 96vh;
+          max-height: calc(96vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
         }
         #settingsHeader {
           padding: 12px;
@@ -582,13 +656,24 @@
         #settingsHeader h2 {
           font-size: 18px;
         }
+        #settingsBody {
+          padding: 12px;
+        }
         .provider-form input,
         .provider-form select {
           font-size: 16px;
           padding: 12px;
+          min-height: 44px;
         }
         .settings-section h3 {
           font-size: 16px;
+        }
+        .provider-item {
+          padding: 12px;
+        }
+        .provider-item-actions button {
+          min-height: 44px;
+          font-size: 14px;
         }
       }
 
@@ -605,6 +690,72 @@
       #right,
       #settingsBody {
         -webkit-overflow-scrolling: touch;
+      }
+      
+      /* Safe area support for iPhone X and newer */
+      @supports (padding: max(0px)) {
+        @media screen and (max-width: 880px) {
+          #right {
+            padding-bottom: max(12px, env(safe-area-inset-bottom));
+          }
+          #btnSend {
+            bottom: max(12px, env(safe-area-inset-bottom));
+          }
+          #left {
+            margin-bottom: max(80px, calc(80px + env(safe-area-inset-bottom)));
+          }
+          header {
+            padding-top: max(10px, env(safe-area-inset-top));
+          }
+        }
+      }
+      
+      /* Prevent body scroll when modal is open on mobile */
+      @media screen and (max-width: 880px) {
+        body.modal-open {
+          overflow: hidden;
+          position: fixed;
+          width: 100%;
+        }
+        #settingsModal {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
+        }
+        #settingsContent {
+          margin-top: max(5%, env(safe-area-inset-top));
+          margin-bottom: max(5%, env(safe-area-inset-bottom));
+        }
+      }
+      
+      /* Better spacing for response containers on mobile */
+      @media screen and (max-width: 880px) {
+        .response-container {
+          margin: 12px 0;
+          padding: 12px;
+        }
+        .response-badge {
+          font-size: 11px;
+          padding: 4px 8px;
+          margin-bottom: 8px;
+          display: inline-block;
+        }
+        .prompt {
+          font-size: 15px;
+          padding: 10px;
+          margin: 10px 0;
+        }
+        #main {
+          padding: 10px;
+        }
+        #main h3 {
+          font-size: 18px;
+          margin-top: 0;
+        }
       }
     </style>
 
@@ -1365,11 +1516,17 @@
       chat.showSettings = () => {
         chat("settingsModal").style.display = "block";
         chat.updateProvidersList();
+        // Prevent body scroll on mobile when modal is open
+        if (window.innerWidth <= 880) {
+          document.body.classList.add("modal-open");
+        }
       };
 
       // Hide settings
       chat.hideSettings = () => {
         chat("settingsModal").style.display = "none";
+        // Re-enable body scroll
+        document.body.classList.remove("modal-open");
       };
 
       // Close modal on outside click
@@ -1378,6 +1535,15 @@
           chat.hideSettings();
         }
       };
+      
+      // Handle window resize to update modal state
+      window.addEventListener('resize', () => {
+        if (window.innerWidth > 880) {
+          document.body.classList.remove("modal-open");
+        } else if (chat("settingsModal").style.display === "block") {
+          document.body.classList.add("modal-open");
+        }
+      });
 
       // Stream to a single LLM
       chat.streamToLLM = function (prompt, providerId) {
