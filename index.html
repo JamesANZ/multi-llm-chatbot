@@ -107,13 +107,6 @@
       #menu button:active {
         transform: translateY(0);
       }
-      #btnSend {
-        background: rgba(255, 255, 255, 0.25) !important;
-        font-weight: 600;
-      }
-      #btnSend:hover {
-        background: rgba(255, 255, 255, 0.35) !important;
-      }
       #right textarea {
         display: block;
         width: calc(100% - 24px);
@@ -122,10 +115,46 @@
         border: 1px solid #e0e0e0;
         border-radius: 8px;
         padding: 12px;
+        padding-right: 50px;
         font-family: inherit;
         font-size: 14px;
         resize: vertical;
         box-sizing: border-box;
+      }
+      #right #btnSend {
+        position: absolute;
+        bottom: 8px;
+        right: 12px;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: #19c37d;
+        color: #fff;
+        border: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24);
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        z-index: 10;
+        padding: 0;
+        line-height: 1;
+      }
+      #right #btnSend:hover:not(:disabled) {
+        background: #15a06a;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.16), 0 2px 3px rgba(0, 0, 0, 0.23);
+        transform: translateY(-1px);
+      }
+      #right #btnSend:active:not(:disabled) {
+        transform: translateY(0);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+      }
+      #right #btnSend:disabled {
+        background: #c5c5d2;
+        cursor: not-allowed;
+        opacity: 0.6;
       }
       .prompt {
         color: #333;
@@ -454,10 +483,6 @@
           min-width: 36px;
           flex-shrink: 0;
         }
-        #menu button#btnSend {
-          min-width: 60px;
-          font-weight: 600;
-        }
         #content {
           flex-direction: column;
           height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 100px);
@@ -486,24 +511,26 @@
           box-sizing: border-box;
         }
         #right textarea {
-          width: calc(100% - 80px);
+          width: calc(100% - 24px);
           min-height: 44px;
           max-height: 120px;
           padding: 12px;
+          padding-right: 50px;
           font-size: 16px;
           border-radius: 8px;
           resize: none;
           box-sizing: border-box;
           line-height: 1.5;
         }
-        #btnSend {
+        #right #btnSend {
           position: absolute;
           bottom: calc(12px + env(safe-area-inset-bottom));
           right: 12px;
-          height: 44px;
-          min-width: 60px;
-          padding: 10px 16px;
-          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+          width: 32px;
+          height: 32px;
+          min-width: 32px;
+          padding: 0;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24);
         }
         #left {
           width: 100%;
@@ -621,18 +648,19 @@
           padding-bottom: calc(10px + env(safe-area-inset-bottom));
         }
         #right textarea {
-          width: calc(100% - 70px);
+          width: calc(100% - 24px);
           padding: 10px;
+          padding-right: 50px;
           font-size: 16px;
           min-height: 44px;
         }
-        #btnSend {
+        #right #btnSend {
           bottom: calc(10px + env(safe-area-inset-bottom));
           right: 10px;
-          height: 44px;
-          min-width: 60px;
-          padding: 8px 14px;
-          font-size: 12px;
+          width: 32px;
+          height: 32px;
+          min-width: 32px;
+          padding: 0;
         }
         #left {
           margin-bottom: calc(85px + env(safe-area-inset-bottom));
@@ -791,14 +819,6 @@
         >
           Prompts
         </button>
-        <button
-          id="btnSend"
-          accesskey="s"
-          onclick="chat.submit()"
-          title="[Alt-S] submit prompt"
-        >
-          <b>S</b>end
-        </button>
       </div>
     </header>
 
@@ -892,6 +912,16 @@
             placeholder="Enter your prompt here..."
             style="font-size: 16px"
           ></textarea>
+          <button
+            id="btnSend"
+            accesskey="s"
+            onclick="chat.submit()"
+            title="[Alt-S] submit prompt"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M.5 1.163A1 1 0 0 1 1.97.28l12.868 6.837a1 1 0 0 1 0 1.766L1.969 15.72A1 1 0 0 1 .5 14.836V10.33a1 1 0 0 1 .816-.983L8.5 8 1.316 6.653A1 1 0 0 1 .5 5.67V1.163Z" fill="currentColor"/>
+            </svg>
+          </button>
         </div>
         <div id="list" style="height: calc(100vh - 250px)">
           <b>How to Use</b>
@@ -1791,7 +1821,8 @@
         });
 
         chat("left").scrollTop = chat("left").scrollHeight;
-        chat("btnSend").innerText = "Stop..";
+          chat("btnSend").innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="12" height="12" rx="1" fill="currentColor"/></svg>';
+          chat("btnSend").disabled = true;
 
         Promise.allSettled(promises).then((results) => {
           const responses = {};
@@ -1821,7 +1852,8 @@
           });
 
           chat.updateHistoryDisplay();
-          chat("btnSend").innerText = "Send";
+          chat("btnSend").innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M.5 1.163A1 1 0 0 1 1.97.28l12.868 6.837a1 1 0 0 1 0 1.766L1.969 15.72A1 1 0 0 1 .5 14.836V10.33a1 1 0 0 1 .816-.983L8.5 8 1.316 6.653A1 1 0 0 1 .5 5.67V1.163Z" fill="currentColor"/></svg>';
+          chat("btnSend").disabled = false;
 
           if (document.body.clientWidth > 800) {
             chat("prompt").select();
@@ -1887,8 +1919,9 @@
 
       // Submit prompt
       chat.submit = () => {
-        if (chat("btnSend").innerText === "Stop..") {
-          chat("btnSend").innerText = "Send";
+        if (chat("btnSend").disabled) {
+          chat("btnSend").innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M.5 1.163A1 1 0 0 1 1.97.28l12.868 6.837a1 1 0 0 1 0 1.766L1.969 15.72A1 1 0 0 1 .5 14.836V10.33a1 1 0 0 1 .816-.983L8.5 8 1.316 6.653A1 1 0 0 1 .5 5.67V1.163Z" fill="currentColor"/></svg>';
+          chat("btnSend").disabled = false;
           return;
         }
 
@@ -2065,7 +2098,7 @@
           event.key === "Enter" &&
           (chat.hotkey !== "ctrl" || event.ctrlKey)
         ) {
-          if (chat("btnSend").innerText === "Send") {
+          if (!chat("btnSend").disabled) {
             event.preventDefault();
             chat.submit();
           }
