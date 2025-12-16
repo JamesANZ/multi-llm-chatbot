@@ -2,7 +2,10 @@
 <html>
   <head>
     <title>Multi-LLM Chat</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes"
+    />
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
   </head>
   <body>
@@ -21,7 +24,7 @@
       header {
         background: linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%);
         color: #fff;
-        padding: 16px 24px;
+        padding: 12px 16px;
         font-size: 20px;
         box-shadow:
           0 4px 6px rgba(0, 0, 0, 0.1),
@@ -30,19 +33,26 @@
         justify-content: space-between;
         align-items: center;
         min-height: 70px;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      #content {
+        display: flex;
+        flex-direction: row;
+        gap: 12px;
+        height: calc(100vh - 102px);
       }
       #left {
-        float: left;
-        width: calc(60vw - 30px);
-        height: calc(100vh - 102px);
+        flex: 1;
+        min-width: 0;
+        height: 100%;
         background: #fff;
         border-radius: 8px;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
       }
       #right {
-        float: right;
-        width: calc(40% - 20px);
-        height: calc(100vh - 102px);
+        flex: 0 0 400px;
+        height: 100%;
       }
       #left,
       #prompt,
@@ -60,28 +70,34 @@
         display: flex;
         flex-direction: column;
         justify-content: center;
+        flex: 1;
+        min-width: 0;
       }
       #heading span {
         margin-top: 4px;
+        font-size: 12px;
       }
       #menu {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 6px;
+        flex-wrap: wrap;
       }
       #menu button {
         font-family: inherit;
         border-radius: 8px;
         border: none;
-        padding: 10px 18px;
+        padding: 8px 14px;
         background: rgba(255, 255, 255, 0.2);
         color: #fff;
         cursor: pointer;
         transition: all 0.2s ease;
-        font-size: 14px;
+        font-size: 13px;
         font-weight: 500;
         backdrop-filter: blur(10px);
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        min-height: 36px;
+        white-space: nowrap;
       }
       #menu button:hover {
         background: rgba(255, 255, 255, 0.3);
@@ -109,6 +125,7 @@
         font-family: inherit;
         font-size: 14px;
         resize: vertical;
+        box-sizing: border-box;
       }
       .prompt {
         color: #333;
@@ -320,12 +337,15 @@
       #llmSelector label {
         display: inline-block;
         margin: 4px 8px 4px 0;
-        padding: 6px 12px;
+        padding: 8px 12px;
         background: #f8f9fa;
         border: 1px solid #e0e0e0;
         border-radius: 6px;
         cursor: pointer;
         font-size: 14px;
+        min-height: 36px;
+        box-sizing: border-box;
+        touch-action: manipulation;
       }
       #llmSelector input[type="checkbox"] {
         margin-right: 6px;
@@ -355,6 +375,34 @@
         background: #f8f9fa;
         border-radius: 8px;
         border-left: 4px solid #3b82f6;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+      }
+
+      /* Improve mobile text readability */
+      @media screen and (max-width: 880px) {
+        body {
+          font-size: 15px;
+        }
+        .markdown {
+          font-size: 15px;
+          line-height: 1.6;
+        }
+        .markdown pre {
+          overflow-x: auto;
+          font-size: 13px;
+        }
+        .markdown code {
+          font-size: 13px;
+        }
+        .response-container {
+          padding: 10px;
+          margin: 12px 0;
+        }
+        .prompt {
+          padding: 8px;
+          font-size: 15px;
+        }
       }
 
       @media print {
@@ -378,38 +426,185 @@
       }
 
       @media screen and (max-width: 880px) {
+        header {
+          padding: 10px 12px;
+          min-height: auto;
+        }
+        #heading {
+          font-size: 18px;
+        }
+        #heading span {
+          font-size: 11px;
+        }
+        #menu {
+          gap: 4px;
+        }
+        #menu button {
+          padding: 6px 10px;
+          font-size: 12px;
+          min-height: 32px;
+        }
+        #content {
+          flex-direction: column;
+          height: calc(100vh - 120px);
+          gap: 8px;
+          margin: 8px;
+        }
         #list,
         .desktop {
           display: none !important;
         }
         #right {
-          position: absolute;
-          width: auto;
+          flex: 0 0 auto;
+          width: 100%;
           height: auto;
-          bottom: 10px;
-          left: 8px;
-          right: 70px;
+          position: fixed;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          background: #fff;
+          border-top: 1px solid #e0e0e0;
+          padding: 12px;
+          box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
+          z-index: 100;
         }
         #right textarea {
-          height: 1.2em;
-          padding: 10px;
-          overflow: auto;
+          width: calc(100% - 80px);
+          min-height: 44px;
+          max-height: 120px;
+          padding: 12px;
+          font-size: 16px;
+          border-radius: 8px;
+          resize: none;
         }
         #btnSend {
           position: absolute;
-          height: 36px;
-          bottom: 12px;
-          right: 12px;
+          bottom: 20px;
+          right: 20px;
+          height: 44px;
+          min-width: 60px;
+          padding: 10px 16px;
         }
         #left {
-          width: 97%;
-          height: calc(100vh - 154px);
+          width: 100%;
+          height: 100%;
+          margin-bottom: 80px;
+        }
+        #llmSelector {
+          margin-bottom: 8px;
+        }
+        #llmSelector label {
+          display: block;
+          margin: 4px 0;
+          padding: 8px 12px;
+          font-size: 13px;
         }
         #settingsContent {
           width: 95%;
-          margin: 2% auto;
-          max-height: 96vh;
+          margin: 5% auto;
+          max-height: 90vh;
         }
+        #settingsHeader {
+          padding: 16px;
+        }
+        #settingsHeader h2 {
+          font-size: 20px;
+        }
+        #settingsBody {
+          padding: 16px;
+        }
+        .provider-item {
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 12px;
+        }
+        .provider-item-actions {
+          width: 100%;
+          display: flex;
+          gap: 8px;
+        }
+        .provider-item-actions button {
+          flex: 1;
+          margin-left: 0;
+        }
+      }
+
+      @media screen and (max-width: 480px) {
+        header {
+          padding: 8px 10px;
+        }
+        #heading {
+          font-size: 16px;
+        }
+        #heading span {
+          font-size: 10px;
+        }
+        #menu {
+          gap: 3px;
+        }
+        #menu button {
+          padding: 6px 8px;
+          font-size: 11px;
+        }
+        #menu button:not(#btnSend) {
+          padding: 6px;
+        }
+        #menu button[title="voice input"],
+        #menu button[title="clear all data"],
+        #menu button[title="export conversation"] {
+          font-size: 18px;
+          padding: 6px 10px;
+        }
+        #right {
+          padding: 10px;
+        }
+        #right textarea {
+          width: calc(100% - 70px);
+          padding: 10px;
+          font-size: 16px;
+        }
+        #btnSend {
+          bottom: 18px;
+          right: 18px;
+          height: 40px;
+          min-width: 55px;
+          padding: 8px 12px;
+          font-size: 11px;
+        }
+        #settingsContent {
+          width: 98%;
+          margin: 2% auto;
+          max-height: 95vh;
+        }
+        #settingsHeader {
+          padding: 12px;
+        }
+        #settingsHeader h2 {
+          font-size: 18px;
+        }
+        .provider-form input,
+        .provider-form select {
+          font-size: 16px;
+          padding: 12px;
+        }
+        .settings-section h3 {
+          font-size: 16px;
+        }
+      }
+
+      /* Prevent text selection on buttons for better mobile UX */
+      #menu button,
+      .provider-item-actions button {
+        -webkit-tap-highlight-color: transparent;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+
+      /* Improve scrolling on mobile */
+      #left,
+      #right,
+      #settingsBody {
+        -webkit-overflow-scrolling: touch;
       }
     </style>
 
@@ -539,11 +734,14 @@
     <div id="content" style="margin: 8px; color: #112">
       <div id="right">
         <div id="llmSelector"></div>
-        <textarea
-          id="prompt"
-          rows="3"
-          placeholder="Enter your prompt here..."
-        ></textarea>
+        <div style="position: relative">
+          <textarea
+            id="prompt"
+            rows="3"
+            placeholder="Enter your prompt here..."
+            style="font-size: 16px"
+          ></textarea>
+        </div>
         <div id="list" style="height: calc(100vh - 250px)">
           <b>How to Use</b>
           <ol style="padding-left: 20px; margin-top: 8px">
@@ -1464,6 +1662,13 @@
             chat("prompt").focus();
           } else {
             chat("prompt").value = "";
+            // Scroll to bottom on mobile to show the input area
+            setTimeout(() => {
+              window.scrollTo({
+                top: document.body.scrollHeight,
+                behavior: "smooth",
+              });
+            }, 100);
           }
         });
       };
@@ -1633,12 +1838,35 @@
         chat("prompt").value = "Listening...";
       };
 
+      // Auto-resize textarea on mobile
+      chat.autoResizeTextarea = () => {
+        const textarea = chat("prompt");
+        if (textarea) {
+          textarea.style.height = "auto";
+          const maxHeight = window.innerWidth <= 880 ? 120 : 200;
+          const newHeight = Math.min(textarea.scrollHeight, maxHeight);
+          textarea.style.height = newHeight + "px";
+        }
+      };
+
       // Initialize on load
       window.onload = () => {
         chat.loadProviders();
         chat.prompts = chat("list").innerHTML;
         chat.showPrompts();
-        chat("prompt").focus();
+
+        // Setup textarea auto-resize
+        const textarea = chat("prompt");
+        if (textarea) {
+          textarea.addEventListener("input", chat.autoResizeTextarea);
+          // Initial resize
+          chat.autoResizeTextarea();
+        }
+
+        // Only focus on desktop to avoid keyboard popup on mobile
+        if (document.body.clientWidth > 800) {
+          chat("prompt").focus();
+        }
 
         // Migrate old API key if exists
         const oldKey = localStorage.getItem("OPENAI_API_KEY");
