@@ -915,7 +915,8 @@ header {
     width: 100%;
   }
   #settingsModal,
-  #analyticsModal {
+  #analyticsModal,
+  #systemPromptModal {
     position: fixed;
     top: 0;
     left: 0;
@@ -925,7 +926,8 @@ header {
     -webkit-overflow-scrolling: touch;
   }
   #settingsContent,
-  #analyticsContent {
+  #analyticsContent,
+  #systemPromptContent {
     margin-top: max(5%, env(safe-area-inset-top));
     margin-bottom: max(5%, env(safe-area-inset-bottom));
   }
@@ -1061,6 +1063,19 @@ header {
   font-weight: bold;
   margin-bottom: 8px;
   color: #333;
+}
+.temp-system-prompt-panel {
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+.system-prompt-item:hover {
+  background: #e9ecef !important;
+}
+.system-prompt-service-group {
+  margin-bottom: 20px;
 }
 .content-wrapper {
   margin: 8px;

@@ -133,6 +133,43 @@
       </div>
     </div>
 
+    <!-- System Prompt Selection Modal -->
+    <div id="systemPromptModal" class="modal-overlay">
+      <div id="systemPromptContent" class="modal-content">
+        <div id="systemPromptHeader" class="modal-header">
+          <h2>Select System Prompt</h2>
+          <button
+            id="systemPromptClose"
+            onclick="chat.hideSystemPromptSelector()"
+            class="modal-close"
+          >
+            &times;
+          </button>
+        </div>
+        <div id="systemPromptBody" class="modal-body">
+          <div style="margin-bottom: 15px">
+            <input
+              type="text"
+              id="systemPromptSearch"
+              placeholder="Search prompts..."
+              style="
+                width: 100%;
+                padding: 10px;
+                border: 1px solid #e0e0e0;
+                border-radius: 6px;
+                font-size: 14px;
+              "
+              oninput="chat.filterSystemPrompts()"
+            />
+          </div>
+          <div
+            id="systemPromptList"
+            style="max-height: 500px; overflow-y: auto"
+          ></div>
+        </div>
+      </div>
+    </div>
+
     <!-- Settings Modal -->
     <div id="settingsModal" class="modal-overlay">
       <div id="settingsContent" class="modal-content">
@@ -273,6 +310,23 @@
         <div id="mcpToolsPanel" class="mcp-tools-panel">
           <div class="mcp-tools-title">MCP Tools</div>
           <div id="mcpToolsList"></div>
+        </div>
+        <div
+          id="tempSystemPromptPanel"
+          class="temp-system-prompt-panel"
+          style="display: none"
+        >
+          <div
+            style="
+              font-weight: bold;
+              margin-bottom: 6px;
+              color: #333;
+              font-size: 13px;
+            "
+          >
+            Temporary System Prompts
+          </div>
+          <div id="tempSystemPromptList"></div>
         </div>
         <div class="textarea-wrapper">
           <textarea

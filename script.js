@@ -357,6 +357,8 @@ chat.analytics = {
   totalCost: 0,
   providerStats: {},
 };
+chat.systemPromptsCatalog = null;
+chat.systemPromptLoadingRequests = {}; // Track ongoing requests
 
 // Load providers from localStorage
 chat.loadProviders = () => {
@@ -598,14 +600,26 @@ chat.updateProvidersList = () => {
   list.innerHTML = chat.providers
     .map((provider) => {
       const model = chat.getProviderModel(provider.id);
+      const systemPromptPath = chat.getSystemPromptPathForProvider(provider.id);
+      const systemPromptName = systemPromptPath
+        ? systemPromptPath
+            .split("/")
+            .pop()
+            .replace(/\.txt$/, "")
+        : "None";
       return `
       <div class="provider-item">
         <div class="provider-item-info">
           <div class="provider-item-name">${provider.name}</div>
           <div class="provider-item-model">Model: ${model || "Not set"}</div>
+          <div class="provider-item-system-prompt" style="font-size: 12px; color: #888; margin-top: 4px;">
+            System Prompt: ${systemPromptName}
+          </div>
         </div>
         <div class="provider-item-actions">
           <button class="btn-edit" onclick="chat.editProvider('${provider.id}')">Edit</button>
+          <button class="btn-edit" onclick="chat.showSystemPromptSelector('${provider.id}')" style="background: #06b6d4;">System Prompt</button>
+          ${systemPromptPath ? `<button class="btn-edit" onclick="chat.removeSystemPromptForProvider('${provider.id}', false)" style="background: #f59e0b;">Remove Prompt</button>` : ""}
           <button class="btn-delete" onclick="chat.deleteProvider('${provider.id}')">Delete</button>
         </div>
       </div>
@@ -648,6 +662,7 @@ chat.toggleLLM = (providerId) => {
   }
   chat.saveProviders();
   chat.updateLLMSelector();
+  chat.updateTempSystemPromptDisplay();
 };
 
 // Template change handler
@@ -1304,6 +1319,9 @@ window.onclick = (event) => {
   if (event.target.id === "analyticsModal") {
     chat.hideAnalytics();
   }
+  if (event.target.id === "systemPromptModal") {
+    chat.hideSystemPromptSelector();
+  }
 };
 
 // Handle window resize to update modal state
@@ -1318,9 +1336,576 @@ window.addEventListener("resize", () => {
   }
 });
 
+// System Prompts Management
+// GitHub repository base URL for system prompts
+chat.SYSTEM_PROMPTS_REPO =
+  "https://raw.githubusercontent.com/JamesANZ/system-prompts-mcp-server/main/prompts";
+chat.CATALOG_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+chat.PROMPT_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+
+// Build prompt catalog structure (comprehensive list of available prompts)
+chat.buildPromptCatalog = () => {
+  return [
+    {
+      service: "Cursor Prompts",
+      prompts: [
+        {
+          name: "Agent Prompt 2.0",
+          path: "Cursor Prompts/Agent Prompt 2.0.txt",
+        },
+        {
+          name: "Agent Prompt v1.2",
+          path: "Cursor Prompts/Agent Prompt v1.2.txt",
+        },
+        {
+          name: "Agent Prompt v1.0",
+          path: "Cursor Prompts/Agent Prompt v1.0.txt",
+        },
+        {
+          name: "Agent Prompt 2025-09-03",
+          path: "Cursor Prompts/Agent Prompt 2025-09-03.txt",
+        },
+        {
+          name: "Agent CLI Prompt 2025-08-07",
+          path: "Cursor Prompts/Agent CLI Prompt 2025-08-07.txt",
+        },
+        { name: "Chat Prompt", path: "Cursor Prompts/Chat Prompt.txt" },
+      ],
+    },
+    {
+      service: "Devin AI",
+      prompts: [
+        { name: "Prompt", path: "Devin AI/Prompt.txt" },
+        { name: "DeepWiki Prompt", path: "Devin AI/DeepWiki Prompt.txt" },
+      ],
+    },
+    {
+      service: "Claude Code",
+      prompts: [
+        {
+          name: "System Prompt",
+          path: "Claude Code/claude-code-system-prompt.txt",
+        },
+      ],
+    },
+    {
+      service: "Anthropic",
+      prompts: [
+        { name: "Claude Code 2.0", path: "Anthropic/Claude Code 2.0.txt" },
+        { name: "Sonnet 4.5 Prompt", path: "Anthropic/Sonnet 4.5 Prompt.txt" },
+      ],
+    },
+    {
+      service: "VSCode Agent",
+      prompts: [
+        { name: "Prompt", path: "VSCode Agent/Prompt.txt" },
+        { name: "GPT-5", path: "VSCode Agent/gpt-5.txt" },
+        { name: "GPT-5 Mini", path: "VSCode Agent/gpt-5-mini.txt" },
+        { name: "GPT-4o", path: "VSCode Agent/gpt-4o.txt" },
+        { name: "GPT-4.1", path: "VSCode Agent/gpt-4.1.txt" },
+        { name: "Claude Sonnet 4", path: "VSCode Agent/claude-sonnet-4.txt" },
+        { name: "Gemini 2.5 Pro", path: "VSCode Agent/gemini-2.5-pro.txt" },
+        { name: "Chat Titles", path: "VSCode Agent/chat-titles.txt" },
+        {
+          name: "NES Tab Completion",
+          path: "VSCode Agent/nes-tab-completion.txt",
+        },
+      ],
+    },
+    {
+      service: "Windsurf",
+      prompts: [
+        { name: "Prompt Wave 11", path: "Windsurf/Prompt Wave 11.txt" },
+      ],
+    },
+    {
+      service: "Warp.dev",
+      prompts: [{ name: "Prompt", path: "Warp.dev/Prompt.txt" }],
+    },
+    {
+      service: "Xcode",
+      prompts: [
+        { name: "System", path: "Xcode/System.txt" },
+        { name: "Document Action", path: "Xcode/DocumentAction.txt" },
+        { name: "Explain Action", path: "Xcode/ExplainAction.txt" },
+        { name: "Message Action", path: "Xcode/MessageAction.txt" },
+        { name: "Playground Action", path: "Xcode/PlaygroundAction.txt" },
+        { name: "Preview Action", path: "Xcode/PreviewAction.txt" },
+      ],
+    },
+    {
+      service: "Replit",
+      prompts: [{ name: "Prompt", path: "Replit/Prompt.txt" }],
+    },
+    {
+      service: "Perplexity",
+      prompts: [{ name: "Prompt", path: "Perplexity/Prompt.txt" }],
+    },
+    {
+      service: "Lovable",
+      prompts: [{ name: "Agent Prompt", path: "Lovable/Agent Prompt.txt" }],
+    },
+    {
+      service: "Same.dev",
+      prompts: [{ name: "Prompt", path: "Same.dev/Prompt.txt" }],
+    },
+    {
+      service: "Trae",
+      prompts: [
+        { name: "Builder Prompt", path: "Trae/Builder Prompt.txt" },
+        { name: "Chat Prompt", path: "Trae/Chat Prompt.txt" },
+      ],
+    },
+    {
+      service: "Traycer AI",
+      prompts: [
+        {
+          name: "Phase Mode Prompts",
+          path: "Traycer AI/phase_mode_prompts.txt",
+        },
+      ],
+    },
+    {
+      service: "v0 Prompts",
+      prompts: [{ name: "Prompt", path: "v0 Prompts and Tools/Prompt.txt" }],
+    },
+    {
+      service: "Augment Code",
+      prompts: [
+        {
+          name: "Claude 4 Sonnet Agent Prompts",
+          path: "Augment Code/claude-4-sonnet-agent-prompts.txt",
+        },
+        {
+          name: "GPT-5 Agent Prompts",
+          path: "Augment Code/gpt-5-agent-prompts.txt",
+        },
+      ],
+    },
+    {
+      service: "CodeBuddy Prompts",
+      prompts: [
+        { name: "Chat Prompt", path: "CodeBuddy Prompts/Chat Prompt.txt" },
+        { name: "Craft Prompt", path: "CodeBuddy Prompts/Craft Prompt.txt" },
+      ],
+    },
+    {
+      service: "Cluely",
+      prompts: [
+        { name: "Default Prompt", path: "Cluely/Default Prompt.txt" },
+        { name: "Enterprise Prompt", path: "Cluely/Enterprise Prompt.txt" },
+      ],
+    },
+    {
+      service: "Comet Assistant",
+      prompts: [
+        { name: "System Prompt", path: "Comet Assistant/System Prompt.txt" },
+      ],
+    },
+    {
+      service: "Emergent",
+      prompts: [{ name: "Prompt", path: "Emergent/Prompt.txt" }],
+    },
+    {
+      service: "Gemini",
+      prompts: [
+        {
+          name: "AI Studio Vibe-Coder",
+          path: "Gemini/AI Studio Vibe-Coder.txt",
+        },
+      ],
+    },
+    {
+      service: "Google Gemini",
+      prompts: [
+        {
+          name: "AI Studio vibe-coder",
+          path: "Google/Gemini/AI Studio vibe-coder.txt",
+        },
+      ],
+    },
+    {
+      service: "Google Antigravity",
+      prompts: [
+        { name: "Fast Prompt", path: "Google/Antigravity/Fast Prompt.txt" },
+        { name: "Planning Mode", path: "Google/Antigravity/planning-mode.txt" },
+      ],
+    },
+    {
+      service: "Junie",
+      prompts: [{ name: "Prompt", path: "Junie/Prompt.txt" }],
+    },
+    {
+      service: "Kiro",
+      prompts: [
+        {
+          name: "Mode Classifier Prompt",
+          path: "Kiro/Mode_Clasifier_Prompt.txt",
+        },
+        { name: "Spec Prompt", path: "Kiro/Spec_Prompt.txt" },
+        { name: "Vibe Prompt", path: "Kiro/Vibe_Prompt.txt" },
+      ],
+    },
+    {
+      service: "Leap.new",
+      prompts: [{ name: "Prompts", path: "Leap.new/Prompts.txt" }],
+    },
+    {
+      service: "Manus Agent",
+      prompts: [
+        { name: "Prompt", path: "Manus Agent Tools & Prompt/Prompt.txt" },
+      ],
+    },
+    {
+      service: "NotionAi",
+      prompts: [{ name: "Prompt", path: "NotionAi/Prompt.txt" }],
+    },
+    {
+      service: "Orchids.app",
+      prompts: [
+        { name: "System Prompt", path: "Orchids.app/System Prompt.txt" },
+        {
+          name: "Decision-making prompt",
+          path: "Orchids.app/Decision-making prompt.txt",
+        },
+      ],
+    },
+    {
+      service: "Poke",
+      prompts: [
+        { name: "Poke agent", path: "Poke/Poke agent.txt" },
+        { name: "Poke p1", path: "Poke/Poke_p1.txt" },
+        { name: "Poke p2", path: "Poke/Poke_p2.txt" },
+        { name: "Poke p3", path: "Poke/Poke_p3.txt" },
+        { name: "Poke p4", path: "Poke/Poke_p4.txt" },
+        { name: "Poke p5", path: "Poke/Poke_p5.txt" },
+        { name: "Poke p6", path: "Poke/Poke_p6.txt" },
+      ],
+    },
+    {
+      service: "Qoder",
+      prompts: [
+        { name: "prompt", path: "Qoder/prompt.txt" },
+        { name: "Quest Action", path: "Qoder/Quest Action.txt" },
+        { name: "Quest Design", path: "Qoder/Quest Design.txt" },
+      ],
+    },
+    {
+      service: "Open Source - Bolt",
+      prompts: [
+        { name: "Prompt", path: "Open Source prompts/Bolt/Prompt.txt" },
+      ],
+    },
+    {
+      service: "Open Source - Cline",
+      prompts: [
+        { name: "Prompt", path: "Open Source prompts/Cline/Prompt.txt" },
+      ],
+    },
+    {
+      service: "Open Source - Codex CLI",
+      prompts: [
+        { name: "Prompt", path: "Open Source prompts/Codex CLI/Prompt.txt" },
+        {
+          name: "System Prompt 20250820",
+          path: "Open Source prompts/Codex CLI/openai-codex-cli-system-prompt-20250820.txt",
+        },
+      ],
+    },
+    {
+      service: "Open Source - Gemini CLI",
+      prompts: [
+        {
+          name: "System Prompt",
+          path: "Open Source prompts/Gemini CLI/google-gemini-cli-system-prompt.txt",
+        },
+      ],
+    },
+    {
+      service: "Open Source - Lumo",
+      prompts: [
+        { name: "Prompt", path: "Open Source prompts/Lumo/Prompt.txt" },
+      ],
+    },
+    {
+      service: "Open Source - RooCode",
+      prompts: [
+        { name: "Prompt", path: "Open Source prompts/RooCode/Prompt.txt" },
+      ],
+    },
+    {
+      service: "dia",
+      prompts: [{ name: "Prompt", path: "dia/Prompt.txt" }],
+    },
+    {
+      service: "Z.ai Code",
+      prompts: [{ name: "prompt", path: "Z.ai Code/prompt.txt" }],
+    },
+  ];
+};
+
+// Fetch prompt catalog (returns cached or builds new)
+chat.getPromptCatalog = () => {
+  if (chat.systemPromptsCatalog) {
+    return Promise.resolve(chat.systemPromptsCatalog);
+  }
+
+  // Check cache
+  const cached = localStorage.getItem("system_prompts_catalog");
+  if (cached) {
+    try {
+      const catalogData = JSON.parse(cached);
+      const cacheTime = catalogData.timestamp || 0;
+      const now = Date.now();
+      if (now - cacheTime < chat.CATALOG_CACHE_DURATION) {
+        chat.systemPromptsCatalog = catalogData.catalog;
+        return Promise.resolve(catalogData.catalog);
+      }
+    } catch (e) {
+      // Invalid cache, continue to build new
+    }
+  }
+
+  // Build new catalog
+  const catalog = chat.buildPromptCatalog();
+  chat.systemPromptsCatalog = catalog;
+
+  // Cache it
+  localStorage.setItem(
+    "system_prompts_catalog",
+    JSON.stringify({
+      catalog: catalog,
+      timestamp: Date.now(),
+    }),
+  );
+
+  return Promise.resolve(catalog);
+};
+
+// Load system prompt content from GitHub
+chat.loadSystemPrompt = async (promptPath) => {
+  // Check cache first
+  const cacheKey = `prompt_content_cache_${promptPath.replace(/\//g, "_")}`;
+  const cached = localStorage.getItem(cacheKey);
+  if (cached) {
+    try {
+      const cacheData = JSON.parse(cached);
+      const cacheTime = cacheData.timestamp || 0;
+      const now = Date.now();
+      if (now - cacheTime < chat.PROMPT_CACHE_DURATION) {
+        return cacheData.content;
+      }
+    } catch (e) {
+      // Invalid cache, continue to fetch
+    }
+  }
+
+  // Check if request is already in progress
+  if (chat.systemPromptLoadingRequests[promptPath]) {
+    return chat.systemPromptLoadingRequests[promptPath];
+  }
+
+  // Fetch from GitHub
+  const url = `${chat.SYSTEM_PROMPTS_REPO}/${promptPath}`;
+  const requestPromise = fetch(url)
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(
+          `Failed to fetch prompt: ${response.status} ${response.statusText}`,
+        );
+      }
+      return response.text();
+    })
+    .then((content) => {
+      // Cache the content
+      localStorage.setItem(
+        cacheKey,
+        JSON.stringify({
+          content: content,
+          timestamp: Date.now(),
+        }),
+      );
+      delete chat.systemPromptLoadingRequests[promptPath];
+      return content;
+    })
+    .catch((error) => {
+      delete chat.systemPromptLoadingRequests[promptPath];
+      throw error;
+    });
+
+  chat.systemPromptLoadingRequests[promptPath] = requestPromise;
+  return requestPromise;
+};
+
+// Get system prompt for a provider (checks temporary first, then default)
+chat.getSystemPromptForProvider = async (providerId) => {
+  // Check for temporary prompt first
+  const tempPrompt = sessionStorage.getItem(`temp_system_prompt_${providerId}`);
+  if (tempPrompt) {
+    return tempPrompt;
+  }
+
+  // Check for default prompt path
+  const promptPath = localStorage.getItem(`system_prompt_${providerId}`);
+  if (!promptPath) {
+    return null;
+  }
+
+  // Load the prompt content
+  try {
+    return await chat.loadSystemPrompt(promptPath);
+  } catch (error) {
+    console.error(`Failed to load system prompt for ${providerId}:`, error);
+    return null;
+  }
+};
+
+// Set system prompt for a provider
+chat.setSystemPromptForProvider = (
+  providerId,
+  promptPath,
+  isTemporary = false,
+) => {
+  if (isTemporary) {
+    // For temporary, we need to load and store the content
+    chat
+      .loadSystemPrompt(promptPath)
+      .then((content) => {
+        sessionStorage.setItem(`temp_system_prompt_${providerId}`, content);
+        chat.updateTempSystemPromptDisplay();
+      })
+      .catch((error) => {
+        alert(`Failed to load system prompt: ${error.message}`);
+      });
+  } else {
+    localStorage.setItem(`system_prompt_${providerId}`, promptPath);
+    chat.updateProvidersList();
+  }
+};
+
+// Remove system prompt for a provider
+chat.removeSystemPromptForProvider = (providerId, isTemporary = false) => {
+  if (isTemporary) {
+    sessionStorage.removeItem(`temp_system_prompt_${providerId}`);
+    chat.updateTempSystemPromptDisplay();
+  } else {
+    localStorage.removeItem(`system_prompt_${providerId}`);
+    chat.updateProvidersList();
+  }
+};
+
+// Get system prompt path for a provider (for display)
+chat.getSystemPromptPathForProvider = (providerId) => {
+  return localStorage.getItem(`system_prompt_${providerId}`) || null;
+};
+
+// Show system prompt selector modal
+chat.showSystemPromptSelector = async (providerId) => {
+  chat.currentSystemPromptProvider = providerId;
+  const modal = chat("systemPromptModal");
+  const list = chat("systemPromptList");
+
+  // Load catalog
+  try {
+    const catalog = await chat.getPromptCatalog();
+    let html = "";
+
+    catalog.forEach((serviceGroup) => {
+      html += `<div class="system-prompt-service-group" style="margin-bottom: 20px;">`;
+      html += `<h4 style="margin: 0 0 10px 0; color: #333; font-size: 16px; border-bottom: 2px solid #3b82f6; padding-bottom: 5px;">${serviceGroup.service}</h4>`;
+      serviceGroup.prompts.forEach((prompt) => {
+        const promptPath = prompt.path;
+        html += `
+          <div class="system-prompt-item" data-path="${promptPath}" data-name="${prompt.name}" data-service="${serviceGroup.service}" style="background: #f8f9fa; padding: 12px; margin: 8px 0; border-radius: 6px; border-left: 4px solid #3b82f6; cursor: pointer; transition: background 0.2s;">
+            <div style="font-weight: 600; color: #333; margin-bottom: 4px;">${prompt.name}</div>
+            <div style="font-size: 12px; color: #666; margin-bottom: 8px;">${promptPath}</div>
+            <button onclick="chat.selectSystemPrompt('${promptPath}', false)" style="background: #3b82f6; color: #fff; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; margin-right: 8px;">Set as Default</button>
+            <button onclick="chat.selectSystemPrompt('${promptPath}', true)" style="background: #06b6d4; color: #fff; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px;">Use Temporarily</button>
+          </div>
+        `;
+      });
+      html += `</div>`;
+    });
+
+    list.innerHTML =
+      html ||
+      "<p style='color: #666; text-align: center; padding: 20px;'>No prompts available</p>";
+    modal.style.display = "block";
+
+    // Focus search
+    setTimeout(() => {
+      const searchInput = chat("systemPromptSearch");
+      if (searchInput) searchInput.focus();
+    }, 100);
+  } catch (error) {
+    alert(`Failed to load system prompt catalog: ${error.message}`);
+  }
+};
+
+// Hide system prompt selector modal
+chat.hideSystemPromptSelector = () => {
+  chat("systemPromptModal").style.display = "none";
+  chat.currentSystemPromptProvider = null;
+  const searchInput = chat("systemPromptSearch");
+  if (searchInput) searchInput.value = "";
+};
+
+// Filter system prompts by search term
+chat.filterSystemPrompts = () => {
+  const searchTerm = chat("systemPromptSearch").value.toLowerCase();
+  const items = document.querySelectorAll(".system-prompt-item");
+  items.forEach((item) => {
+    const name = item.dataset.name.toLowerCase();
+    const service = item.dataset.service.toLowerCase();
+    const path = item.dataset.path.toLowerCase();
+    if (
+      name.includes(searchTerm) ||
+      service.includes(searchTerm) ||
+      path.includes(searchTerm)
+    ) {
+      item.style.display = "block";
+    } else {
+      item.style.display = "none";
+    }
+  });
+
+  // Hide empty service groups
+  const serviceGroups = document.querySelectorAll(
+    ".system-prompt-service-group",
+  );
+  serviceGroups.forEach((group) => {
+    const visibleItems = group.querySelectorAll(
+      ".system-prompt-item[style*='display: block'], .system-prompt-item:not([style*='display: none'])",
+    );
+    if (visibleItems.length === 0 && searchTerm) {
+      group.style.display = "none";
+    } else {
+      group.style.display = "block";
+    }
+  });
+};
+
+// Select a system prompt
+chat.selectSystemPrompt = (promptPath, isTemporary) => {
+  if (!chat.currentSystemPromptProvider) return;
+
+  chat.setSystemPromptForProvider(
+    chat.currentSystemPromptProvider,
+    promptPath,
+    isTemporary,
+  );
+  chat.hideSystemPromptSelector();
+
+  if (isTemporary) {
+    chat("message").innerText = "Temporary system prompt applied";
+  } else {
+    chat("message").innerText = "System prompt set as default";
+  }
+};
+
 // Stream to a single LLM
 chat.streamToLLM = function (prompt, providerId) {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     const provider = chat.providers.find((p) => p.id === providerId);
     if (!provider) {
       reject(new Error(`Provider ${providerId} not found`));
@@ -1333,6 +1918,18 @@ chat.streamToLLM = function (prompt, providerId) {
     if (!apiKey || !model) {
       reject(new Error(`API key or model not set for ${provider.name}`));
       return;
+    }
+
+    // Get system prompt and prepend to user message
+    let userMessageContent = prompt;
+    try {
+      const systemPrompt = await chat.getSystemPromptForProvider(providerId);
+      if (systemPrompt) {
+        userMessageContent = systemPrompt + "\n\n" + prompt;
+      }
+    } catch (error) {
+      console.error(`Error loading system prompt:`, error);
+      // Continue without system prompt if loading fails
     }
 
     const template =
@@ -1355,7 +1952,7 @@ chat.streamToLLM = function (prompt, providerId) {
       headers["Authorization"] = `Bearer ${apiKey}`;
       body = {
         model: model,
-        messages: [{ role: "user", content: prompt }],
+        messages: [{ role: "user", content: userMessageContent }],
         temperature: 0.8,
         stream: true,
       };
@@ -1381,7 +1978,7 @@ chat.streamToLLM = function (prompt, providerId) {
       headers["content-type"] = "application/json";
       body = {
         model: model,
-        messages: [{ role: "user", content: prompt }],
+        messages: [{ role: "user", content: userMessageContent }],
         max_tokens: 4096,
         stream: true,
       };
@@ -1389,7 +1986,7 @@ chat.streamToLLM = function (prompt, providerId) {
       endpoint = endpoint.replace("{model}", model) + `?key=${apiKey}`;
       headers = { "Content-Type": "application/json" };
       body = {
-        contents: [{ parts: [{ text: prompt }] }],
+        contents: [{ parts: [{ text: userMessageContent }] }],
         generationConfig: {
           temperature: 0.8,
           maxOutputTokens: 2048,
@@ -1400,7 +1997,7 @@ chat.streamToLLM = function (prompt, providerId) {
       headers["Authorization"] = `Bearer ${apiKey}`;
       body = {
         model: model,
-        messages: [{ role: "user", content: prompt }],
+        messages: [{ role: "user", content: userMessageContent }],
         stream: true,
       };
     }
@@ -1412,11 +2009,20 @@ chat.streamToLLM = function (prompt, providerId) {
     let usageCaptured = false;
     const divId = `receiving_${providerId}`;
 
-    // Estimate input tokens from prompt and history
-    let promptTokens = chat.estimateTokens(prompt);
+    // Estimate input tokens from all messages (includes system prompt prepended to user message)
+    let promptTokens = 0;
     if (body.messages) {
       body.messages.forEach((msg) => {
         promptTokens += chat.estimateTokens(msg.content || "");
+      });
+    } else if (body.contents) {
+      // Gemini format
+      body.contents.forEach((content) => {
+        if (content.parts) {
+          content.parts.forEach((part) => {
+            promptTokens += chat.estimateTokens(part.text || "");
+          });
+        }
       });
     }
     inputTokens = promptTokens;
@@ -1964,11 +2570,54 @@ chat.autoResizeTextarea = () => {
   }
 };
 
+// Update temporary system prompt display
+chat.updateTempSystemPromptDisplay = () => {
+  const panel = chat("tempSystemPromptPanel");
+  const list = chat("tempSystemPromptList");
+  if (!panel || !list) return;
+
+  const activeProviders = chat.activeLLMs || [];
+  const tempPrompts = [];
+
+  activeProviders.forEach((providerId) => {
+    const tempPrompt = sessionStorage.getItem(
+      `temp_system_prompt_${providerId}`,
+    );
+    if (tempPrompt) {
+      const provider = chat.providers.find((p) => p.id === providerId);
+      if (provider) {
+        tempPrompts.push({ providerId, providerName: provider.name });
+      }
+    }
+  });
+
+  if (tempPrompts.length > 0) {
+    panel.style.display = "block";
+    list.innerHTML = tempPrompts
+      .map(
+        ({ providerId, providerName }) => `
+      <div style="background: #fff3cd; border: 1px solid #ffc107; padding: 8px; margin: 4px 0; border-radius: 4px; font-size: 12px; display: flex; justify-content: space-between; align-items: center;">
+        <span><strong>${providerName}</strong>: Temporary system prompt active</span>
+        <button onclick="chat.removeSystemPromptForProvider('${providerId}', true); chat.updateTempSystemPromptDisplay();" style="background: #dc3545; color: #fff; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 11px;">Clear</button>
+      </div>
+    `,
+      )
+      .join("");
+  } else {
+    panel.style.display = "none";
+  }
+};
+
 // Initialize on load
 window.onload = () => {
   chat.loadProviders();
   chat.prompts = chat("list").innerHTML;
   chat.showPrompts();
+  // Initialize system prompt catalog
+  chat.getPromptCatalog().catch((error) => {
+    console.error("Failed to load system prompt catalog:", error);
+  });
+  chat.updateTempSystemPromptDisplay();
 
   // Setup textarea auto-resize
   const textarea = chat("prompt");
