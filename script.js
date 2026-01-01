@@ -1062,7 +1062,10 @@ chat.showMcpTools = (serverId) => {
 
   // Add to main chat area
   chat("main").innerHTML += html;
-  chat("left").scrollTop = chat("left").scrollHeight;
+  chat("left").scrollTo({
+    top: chat("left").scrollHeight,
+    behavior: "smooth",
+  });
 };
 
 chat.callMcpTool = async (serverId, toolName) => {
@@ -1098,7 +1101,10 @@ chat.callMcpTool = async (serverId, toolName) => {
   try {
     chat("main").innerHTML +=
       `<div class="response-container"><span class="response-badge">MCP Tool: ${toolName}</span><div>Calling tool...</div></div>`;
-    chat("left").scrollTop = chat("left").scrollHeight;
+    chat("left").scrollTo({
+      top: chat("left").scrollHeight,
+      behavior: "smooth",
+    });
 
     const result = await chat.mcpRequest(serverId, "tools/call", {
       name: toolName,
@@ -1110,7 +1116,10 @@ chat.callMcpTool = async (serverId, toolName) => {
       `<div class="response-container"><span class="response-badge">MCP Tool: ${toolName}</span><div>Calling tool...</div></div>`,
       resultHtml,
     );
-    chat("left").scrollTop = chat("left").scrollHeight;
+    chat("left").scrollTo({
+      top: chat("left").scrollHeight,
+      behavior: "smooth",
+    });
   } catch (error) {
     chat("main").innerHTML = chat("main").innerHTML.replace(
       `<div class="response-container"><span class="response-badge">MCP Tool: ${toolName}</span><div>Calling tool...</div></div>`,
@@ -1123,7 +1132,10 @@ chat.getMcpResource = async (serverId, uri) => {
   try {
     chat("main").innerHTML +=
       `<div class="response-container"><span class="response-badge">MCP Resource</span><div>Loading resource...</div></div>`;
-    chat("left").scrollTop = chat("left").scrollHeight;
+    chat("left").scrollTo({
+      top: chat("left").scrollHeight,
+      behavior: "smooth",
+    });
 
     const result = await chat.mcpRequest(serverId, "resources/read", {
       uri: uri,
@@ -1134,7 +1146,10 @@ chat.getMcpResource = async (serverId, uri) => {
       `<div class="response-container"><span class="response-badge">MCP Resource</span><div>Loading resource...</div></div>`,
       resultHtml,
     );
-    chat("left").scrollTop = chat("left").scrollHeight;
+    chat("left").scrollTo({
+      top: chat("left").scrollHeight,
+      behavior: "smooth",
+    });
   } catch (error) {
     chat("main").innerHTML = chat("main").innerHTML.replace(
       `<div class="response-container"><span class="response-badge">MCP Resource</span><div>Loading resource...</div></div>`,
@@ -2254,7 +2269,16 @@ chat.streamMulti = function (prompt) {
       `<div id="${divId}" class="response-container"><span class="response-badge">${provider.name}</span><div>Receiving...</div></div>`;
   });
 
-  chat("left").scrollTop = chat("left").scrollHeight;
+  // Use requestAnimationFrame to ensure DOM is updated before scrolling
+  requestAnimationFrame(() => {
+    const leftEl = chat("left");
+    if (leftEl) {
+      leftEl.scrollTo({
+        top: leftEl.scrollHeight,
+        behavior: "smooth",
+      });
+    }
+  });
   chat("btnSend").innerHTML = chat.getStopIconSVG();
   chat("btnSend").disabled = true;
 
@@ -2395,7 +2419,16 @@ chat.updateHistoryDisplay = () => {
 
   chat("main").innerHTML = md.html(html1) + "<br></div>";
   chat("list").innerHTML = html2;
-  chat("left").scrollTop = chat("left").scrollHeight;
+  // Use requestAnimationFrame to ensure DOM is updated before scrolling
+  requestAnimationFrame(() => {
+    const leftEl = chat("left");
+    if (leftEl) {
+      leftEl.scrollTo({
+        top: leftEl.scrollHeight,
+        behavior: "smooth",
+      });
+    }
+  });
 };
 
 // Submit prompt
