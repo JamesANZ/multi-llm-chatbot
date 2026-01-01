@@ -136,7 +136,9 @@
         align-items: center;
         justify-content: center;
         font-size: 16px;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24);
+        box-shadow:
+          0 1px 3px rgba(0, 0, 0, 0.12),
+          0 1px 2px rgba(0, 0, 0, 0.24);
         transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         z-index: 10;
         padding: 0;
@@ -144,7 +146,9 @@
       }
       #right #btnSend:hover:not(:disabled) {
         background: #15a06a;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.16), 0 2px 3px rgba(0, 0, 0, 0.23);
+        box-shadow:
+          0 2px 4px rgba(0, 0, 0, 0.16),
+          0 2px 3px rgba(0, 0, 0, 0.23);
         transform: translateY(-1px);
       }
       #right #btnSend:active:not(:disabled) {
@@ -485,7 +489,10 @@
         }
         #content {
           flex-direction: column;
-          height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 100px);
+          height: calc(
+            100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom) -
+              100px
+          );
           gap: 0;
           margin: 0;
           padding: 8px;
@@ -530,7 +537,9 @@
           height: 32px;
           min-width: 32px;
           padding: 0;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24);
+          box-shadow:
+            0 1px 3px rgba(0, 0, 0, 0.12),
+            0 1px 2px rgba(0, 0, 0, 0.24);
         }
         #left {
           width: 100%;
@@ -546,6 +555,11 @@
           background: #f8f9fa;
           border-radius: 8px;
           border: 1px solid #e0e0e0;
+        }
+        #mcpToolsPanel {
+          margin-bottom: 10px;
+          padding: 10px;
+          font-size: 13px;
         }
         #llmSelector > div:first-child {
           font-size: 13px;
@@ -676,7 +690,9 @@
           width: 98%;
           margin: 1% auto;
           max-height: 96vh;
-          max-height: calc(96vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+          max-height: calc(
+            96vh - env(safe-area-inset-top) - env(safe-area-inset-bottom)
+          );
         }
         #settingsHeader {
           padding: 12px;
@@ -719,7 +735,7 @@
       #settingsBody {
         -webkit-overflow-scrolling: touch;
       }
-      
+
       /* Safe area support for iPhone X and newer */
       @supports (padding: max(0px)) {
         @media screen and (max-width: 880px) {
@@ -737,7 +753,7 @@
           }
         }
       }
-      
+
       /* Prevent body scroll when modal is open on mobile */
       @media screen and (max-width: 880px) {
         body.modal-open {
@@ -759,7 +775,7 @@
           margin-bottom: max(5%, env(safe-area-inset-bottom));
         }
       }
-      
+
       /* Better spacing for response containers on mobile */
       @media screen and (max-width: 880px) {
         .response-container {
@@ -875,6 +891,93 @@
             <h3>Manage Providers</h3>
             <div id="providersList"></div>
           </div>
+          <div class="settings-section">
+            <h3>MCP Servers</h3>
+            <p style="margin: 8px 0; font-size: 13px; color: #666">
+              Connect to Model Context Protocol (MCP) servers to access tools
+              and resources.
+            </p>
+            <div class="provider-form">
+              <input
+                type="text"
+                id="mcpServerUrl"
+                placeholder="MCP Server URL (e.g., https://api.example.com/mcp)"
+              />
+              <input
+                type="password"
+                id="mcpBearerToken"
+                placeholder="Bearer Token"
+              />
+              <input
+                type="text"
+                id="mcpServerName"
+                placeholder="Server Name (optional)"
+              />
+              <select
+                id="mcpAuthMethod"
+                style="
+                  width: 100%;
+                  padding: 10px;
+                  margin: 8px 0;
+                  border: 1px solid #e0e0e0;
+                  border-radius: 6px;
+                  font-size: 14px;
+                  box-sizing: border-box;
+                "
+              >
+                <option value="header">
+                  Authorization Header (Recommended)
+                </option>
+                <option value="query">Query Parameter</option>
+              </select>
+              <button onclick="chat.addMcpServer()">Add MCP Server</button>
+            </div>
+            <div id="mcpServersList" style="margin-top: 15px"></div>
+            <div
+              style="
+                background: #fff3cd;
+                border: 1px solid #ffc107;
+                padding: 12px;
+                border-radius: 6px;
+                margin-top: 15px;
+              "
+            >
+              <h4 style="margin-top: 0; color: #856404; font-size: 14px">
+                ⚠️ MCP Server CORS Requirements
+              </h4>
+              <p style="margin: 8px 0; font-size: 12px; color: #856404">
+                <b>Important:</b> MCP servers must have CORS enabled to work
+                from a browser. If you see a CORS error, the server needs to:
+              </p>
+              <ul
+                style="
+                  margin: 8px 0;
+                  padding-left: 20px;
+                  font-size: 12px;
+                  color: #856404;
+                "
+              >
+                <li>
+                  Send <code>Access-Control-Allow-Origin</code> header (or
+                  <code>*</code> for any origin)
+                </li>
+                <li>
+                  Allow <code>Authorization</code> header in
+                  <code>Access-Control-Allow-Headers</code>
+                </li>
+                <li>
+                  Allow <code>POST</code> method in
+                  <code>Access-Control-Allow-Methods</code>
+                </li>
+                <li>Handle OPTIONS preflight requests</li>
+              </ul>
+              <p style="margin: 8px 0; font-size: 12px; color: #856404">
+                <b>Alternative:</b> If you control the MCP server, configure it
+                to allow CORS. Otherwise, you may need to use a proxy server or
+                run this application from a server environment.
+              </p>
+            </div>
+          </div>
           <div
             class="settings-section"
             style="
@@ -905,6 +1008,22 @@
     <div id="content" style="margin: 8px; color: #112">
       <div id="right">
         <div id="llmSelector"></div>
+        <div
+          id="mcpToolsPanel"
+          style="
+            background: #f8f9fa;
+            border: 1px solid #e0e0e0;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            display: none;
+          "
+        >
+          <div style="font-weight: bold; margin-bottom: 8px; color: #333">
+            MCP Tools
+          </div>
+          <div id="mcpToolsList"></div>
+        </div>
         <div style="position: relative">
           <textarea
             id="prompt"
@@ -918,8 +1037,17 @@
             onclick="chat.submit()"
             title="[Alt-S] submit prompt"
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M.5 1.163A1 1 0 0 1 1.97.28l12.868 6.837a1 1 0 0 1 0 1.766L1.969 15.72A1 1 0 0 1 .5 14.836V10.33a1 1 0 0 1 .816-.983L8.5 8 1.316 6.653A1 1 0 0 1 .5 5.67V1.163Z" fill="currentColor"/>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M.5 1.163A1 1 0 0 1 1.97.28l12.868 6.837a1 1 0 0 1 0 1.766L1.969 15.72A1 1 0 0 1 .5 14.836V10.33a1 1 0 0 1 .816-.983L8.5 8 1.316 6.653A1 1 0 0 1 .5 5.67V1.163Z"
+                fill="currentColor"
+              />
             </svg>
           </button>
         </div>
@@ -1309,6 +1437,7 @@
       chat.history = [];
       chat.activeLLMs = [];
       chat.providers = [];
+      chat.mcpServers = [];
 
       // Load providers from localStorage
       chat.loadProviders = () => {
@@ -1316,14 +1445,19 @@
         chat.providers = stored ? JSON.parse(stored) : [];
         const active = localStorage.getItem("active_llms");
         chat.activeLLMs = active ? JSON.parse(active) : [];
+        const mcpStored = localStorage.getItem("mcp_servers");
+        chat.mcpServers = mcpStored ? JSON.parse(mcpStored) : [];
         chat.updateLLMSelector();
         chat.updateProvidersList();
+        chat.updateMcpServersList();
+        chat.updateMcpToolsPanel();
       };
 
       // Save providers to localStorage
       chat.saveProviders = () => {
         localStorage.setItem("llm_providers", JSON.stringify(chat.providers));
         localStorage.setItem("active_llms", JSON.stringify(chat.activeLLMs));
+        localStorage.setItem("mcp_servers", JSON.stringify(chat.mcpServers));
       };
 
       // Get provider API key
@@ -1542,6 +1676,461 @@
         }
       };
 
+      // MCP Server Management
+      chat.addMcpServer = () => {
+        const url = chat("mcpServerUrl").value.trim();
+        const token = chat("mcpBearerToken").value.trim();
+        const name =
+          chat("mcpServerName").value.trim() || new URL(url).hostname;
+        const authMethod = chat("mcpAuthMethod").value || "header";
+
+        if (!url || !token) {
+          alert("Please provide both MCP Server URL and Bearer Token");
+          return;
+        }
+
+        // Validate URL
+        try {
+          new URL(url);
+        } catch (e) {
+          alert("Invalid URL format");
+          return;
+        }
+
+        const serverId = `mcp_${Date.now()}`;
+        const server = {
+          id: serverId,
+          name: name,
+          url: url,
+        };
+
+        chat.mcpServers.push(server);
+        chat.saveMcpServerToken(serverId, token);
+        chat.saveMcpAuthMethod(serverId, authMethod);
+        chat.saveProviders();
+
+        // Clear form
+        chat("mcpServerUrl").value = "";
+        chat("mcpBearerToken").value = "";
+        chat("mcpServerName").value = "";
+        chat("mcpAuthMethod").value = "header";
+
+        chat.updateMcpServersList();
+        alert("MCP Server added successfully!");
+      };
+
+      chat.deleteMcpServer = (serverId) => {
+        if (confirm("Delete this MCP server?")) {
+          chat.mcpServers = chat.mcpServers.filter((s) => s.id !== serverId);
+          localStorage.removeItem(`mcp_token_${serverId}`);
+          localStorage.removeItem(`mcp_auth_method_${serverId}`);
+          localStorage.removeItem(`mcp_tools_${serverId}`);
+          chat.saveProviders();
+          chat.updateMcpServersList();
+        }
+      };
+
+      chat.getMcpServerToken = (serverId) => {
+        return localStorage.getItem(`mcp_token_${serverId}`) || "";
+      };
+
+      chat.saveMcpServerToken = (serverId, token) => {
+        localStorage.setItem(`mcp_token_${serverId}`, token);
+      };
+
+      chat.getMcpAuthMethod = (serverId) => {
+        return localStorage.getItem(`mcp_auth_method_${serverId}`) || "header";
+      };
+
+      chat.saveMcpAuthMethod = (serverId, method) => {
+        localStorage.setItem(`mcp_auth_method_${serverId}`, method);
+      };
+
+      chat.editMcpServer = (serverId) => {
+        const server = chat.mcpServers.find((s) => s.id === serverId);
+        if (!server) return;
+
+        const newToken = prompt(
+          "Enter new bearer token:",
+          chat.getMcpServerToken(serverId),
+        );
+        if (newToken !== null && newToken !== "") {
+          chat.saveMcpServerToken(serverId, newToken);
+        }
+
+        const authMethod = chat.getMcpAuthMethod(serverId);
+        const newAuthMethod = confirm(
+          `Current auth method: ${authMethod === "query" ? "Query Parameter" : "Authorization Header"}\n\nClick OK to use Query Parameter, Cancel to use Authorization Header`,
+        )
+          ? "query"
+          : "header";
+        chat.saveMcpAuthMethod(serverId, newAuthMethod);
+        chat.updateMcpServersList();
+      };
+
+      chat.updateMcpServersList = () => {
+        const list = chat("mcpServersList");
+        if (!list) return;
+
+        if (chat.mcpServers.length === 0) {
+          list.innerHTML =
+            '<p style="color:#666; font-style:italic;">No MCP servers added yet.</p>';
+          return;
+        }
+
+        list.innerHTML = chat.mcpServers
+          .map((server) => {
+            const authMethod = chat.getMcpAuthMethod(server.id);
+            return `
+      <div class="provider-item">
+        <div class="provider-item-info">
+          <div class="provider-item-name">${server.name}</div>
+          <div class="provider-item-model">${server.url}</div>
+          <div style="font-size: 12px; color: #999; margin-top: 4px;">Auth: ${authMethod === "query" ? "Query Parameter" : "Authorization Header"}</div>
+        </div>
+        <div class="provider-item-actions">
+          <button class="btn-edit" onclick="chat.editMcpServer('${server.id}')">Edit</button>
+          <button class="btn-edit" onclick="chat.loadMcpTools('${server.id}')">Load Tools</button>
+          <button class="btn-delete" onclick="chat.deleteMcpServer('${server.id}')">Delete</button>
+        </div>
+      </div>
+    `;
+          })
+          .join("");
+
+        // Update MCP tools panel
+        chat.updateMcpToolsPanel();
+      };
+
+      chat.updateMcpToolsPanel = () => {
+        const panel = chat("mcpToolsPanel");
+        const toolsList = chat("mcpToolsList");
+        if (!panel || !toolsList) return;
+
+        let hasTools = false;
+        let html = "";
+
+        for (const server of chat.mcpServers) {
+          const stored = localStorage.getItem(`mcp_tools_${server.id}`);
+          if (stored) {
+            const { tools, resources } = JSON.parse(stored);
+            if (tools.length > 0 || resources.length > 0) {
+              hasTools = true;
+              html += `<div style="margin-bottom: 12px;"><strong style="font-size: 13px; color: #666;">${server.name}:</strong></div>`;
+
+              if (tools.length > 0) {
+                tools.forEach((tool) => {
+                  html += `
+            <div style="background: #fff; padding: 8px; margin: 4px 0; border-radius: 4px; border-left: 3px solid #3b82f6; font-size: 12px;">
+              <div style="font-weight: 600; margin-bottom: 2px;">${tool.name}</div>
+              <div style="color: #666; font-size: 11px; margin-bottom: 4px;">${(tool.description || "").substring(0, 50)}${(tool.description || "").length > 50 ? "..." : ""}</div>
+              <button onclick="chat.callMcpTool('${server.id}', '${tool.name}')" style="background: #3b82f6; color: #fff; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 11px;">Use</button>
+            </div>
+          `;
+                });
+              }
+            }
+          }
+        }
+
+        if (hasTools) {
+          panel.style.display = "block";
+          toolsList.innerHTML = html;
+        } else {
+          panel.style.display = "none";
+        }
+      };
+
+      // MCP Client Functions
+      chat.mcpRequest = async (serverId, method, params = {}) => {
+        const server = chat.mcpServers.find((s) => s.id === serverId);
+        if (!server) {
+          throw new Error("MCP server not found");
+        }
+
+        const token = chat.getMcpServerToken(serverId);
+        if (!token) {
+          throw new Error("Bearer token not found for MCP server");
+        }
+
+        const authMethod = chat.getMcpAuthMethod(serverId);
+
+        // Build endpoint URL - add token as query param if needed
+        let endpoint = server.url;
+        const headers = {
+          "Content-Type": "application/json",
+          Accept: "application/json", // Some MCP servers may prefer text/event-stream, but JSON works for most
+        };
+
+        if (authMethod === "query") {
+          // Add token as query parameter
+          const urlObj = new URL(endpoint);
+          urlObj.searchParams.set("token", token);
+          endpoint = urlObj.toString();
+        } else {
+          // Use Authorization header (default/recommended)
+          headers["Authorization"] = `Bearer ${token}`;
+        }
+
+        const requestBody = {
+          jsonrpc: "2.0",
+          id: Date.now(),
+          method: method,
+          params: params,
+        };
+
+        try {
+          const response = await fetch(endpoint, {
+            method: "POST",
+            headers: headers,
+            body: JSON.stringify(requestBody),
+            mode: "cors",
+          });
+
+          // Parse JSON response regardless of status code to get error details
+          let data;
+          try {
+            data = await response.json();
+          } catch (e) {
+            // If response isn't JSON, handle as text response
+            if (!response.ok) {
+              throw new Error(
+                `HTTP ${response.status}: ${response.statusText}`,
+              );
+            }
+            throw new Error("Invalid JSON response from server");
+          }
+
+          // Check for JSON-RPC error response
+          if (data.error) {
+            // Handle specific error codes
+            const errorCode = data.error.code;
+            const errorMsg =
+              data.error.message || `Error code ${errorCode || "unknown"}`;
+
+            // Handle session-related errors
+            if (
+              errorMsg.includes("sessionId") ||
+              errorMsg.includes("session") ||
+              errorMsg.includes("No sessionId") ||
+              (errorCode === "upstream_error" && errorMsg.includes("sessionId"))
+            ) {
+              throw new Error(
+                "Session Required: " +
+                  errorMsg +
+                  "\n\n" +
+                  "This MCP server requires a session to be established before making requests. " +
+                  "You may need to:\n" +
+                  "1. Check the MCP server documentation for session initialization\n" +
+                  "2. Contact the server provider for session setup instructions\n" +
+                  "3. Some MCP servers may require additional headers or initialization requests",
+              );
+            }
+
+            // Handle upstream errors
+            if (errorCode === "upstream_error") {
+              throw new Error("Server Error: " + errorMsg);
+            }
+
+            throw new Error(errorMsg);
+          }
+
+          if (!response.ok) {
+            if (response.status === 401) {
+              throw new Error("Unauthorized - Invalid bearer token");
+            }
+            if (response.status === 404) {
+              throw new Error(
+                `Endpoint not found (404). Make sure the MCP server URL is correct: ${endpoint}`,
+              );
+            }
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+
+          return data.result;
+        } catch (error) {
+          // Don't mask the actual error if it's already a meaningful message
+          if (
+            error.message &&
+            !error.message.includes("CORS") &&
+            !error.message.includes("fetch")
+          ) {
+            throw error;
+          }
+
+          // Check for CORS-related errors
+          if (
+            error.message &&
+            (error.message.includes("CORS") ||
+              error.message.includes("fetch") ||
+              error.message.includes("Access-Control") ||
+              error.message.includes("Failed to fetch") ||
+              error.name === "TypeError")
+          ) {
+            throw new Error(
+              "CORS Error: The MCP server at " +
+                endpoint +
+                " does not allow browser requests. " +
+                "The server needs to send CORS headers (Access-Control-Allow-Origin, etc.). " +
+                "This is a browser security restriction that cannot be bypassed from client-side code. " +
+                "Please configure the MCP server to enable CORS, or use a proxy server.",
+            );
+          }
+
+          throw error;
+        }
+      };
+
+      chat.loadMcpTools = async (serverId) => {
+        try {
+          const tools = await chat.mcpRequest(serverId, "tools/list");
+          const resources = await chat
+            .mcpRequest(serverId, "resources/list")
+            .catch(() => []);
+
+          // Store tools for this server
+          localStorage.setItem(
+            `mcp_tools_${serverId}`,
+            JSON.stringify({
+              tools: tools.tools || [],
+              resources: resources.resources || [],
+            }),
+          );
+
+          // Update UI
+          chat.updateMcpToolsPanel();
+          alert(
+            `Loaded ${(tools.tools || []).length} tools and ${(resources.resources || []).length} resources`,
+          );
+        } catch (error) {
+          alert(`Error loading MCP tools: ${error.message}`);
+        }
+      };
+
+      chat.showMcpTools = (serverId) => {
+        const stored = localStorage.getItem(`mcp_tools_${serverId}`);
+        if (!stored) {
+          alert("No tools loaded for this server. Click 'Load Tools' first.");
+          return;
+        }
+
+        const { tools, resources } = JSON.parse(stored);
+        const server = chat.mcpServers.find((s) => s.id === serverId);
+
+        let html = `<h4 style="margin-top: 20px; color: #333;">MCP Tools: ${server.name}</h4>`;
+
+        if (tools.length > 0) {
+          html += '<div style="margin: 10px 0;"><strong>Tools:</strong></div>';
+          tools.forEach((tool) => {
+            html += `
+        <div style="background: #f8f9fa; padding: 10px; margin: 8px 0; border-radius: 6px; border-left: 4px solid #3b82f6;">
+          <div style="font-weight: bold; margin-bottom: 4px;">${tool.name}</div>
+          <div style="font-size: 13px; color: #666; margin-bottom: 8px;">${tool.description || "No description"}</div>
+          <button onclick="chat.callMcpTool('${serverId}', '${tool.name}')" style="background: #3b82f6; color: #fff; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px;">Use Tool</button>
+        </div>
+      `;
+          });
+        }
+
+        if (resources.length > 0) {
+          html +=
+            '<div style="margin: 10px 0;"><strong>Resources:</strong></div>';
+          resources.forEach((resource) => {
+            html += `
+        <div style="background: #f8f9fa; padding: 10px; margin: 8px 0; border-radius: 6px; border-left: 4px solid #06b6d4;">
+          <div style="font-weight: bold; margin-bottom: 4px;">${resource.name}</div>
+          <div style="font-size: 13px; color: #666; margin-bottom: 8px;">${resource.description || "No description"}</div>
+          <button onclick="chat.getMcpResource('${serverId}', '${resource.uri}')" style="background: #06b6d4; color: #fff; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px;">Get Resource</button>
+        </div>
+      `;
+          });
+        }
+
+        // Add to main chat area
+        chat("main").innerHTML += html;
+        chat("left").scrollTop = chat("left").scrollHeight;
+      };
+
+      chat.callMcpTool = async (serverId, toolName) => {
+        const stored = localStorage.getItem(`mcp_tools_${serverId}`);
+        if (!stored) return;
+
+        const { tools } = JSON.parse(stored);
+        const tool = tools.find((t) => t.name === toolName);
+        if (!tool) return;
+
+        // Get arguments from user
+        const args = {};
+        if (tool.inputSchema && tool.inputSchema.properties) {
+          for (const [key, prop] of Object.entries(
+            tool.inputSchema.properties,
+          )) {
+            const value = prompt(
+              `${prop.description || key} (${prop.type || "string"}):`,
+              "",
+            );
+            if (value === null) return; // User cancelled
+            if (value !== "") {
+              // Convert to appropriate type
+              if (prop.type === "number" || prop.type === "integer") {
+                args[key] = parseFloat(value);
+              } else if (prop.type === "boolean") {
+                args[key] = value.toLowerCase() === "true";
+              } else {
+                args[key] = value;
+              }
+            }
+          }
+        }
+
+        try {
+          chat("main").innerHTML +=
+            `<div class="response-container"><span class="response-badge">MCP Tool: ${toolName}</span><div>Calling tool...</div></div>`;
+          chat("left").scrollTop = chat("left").scrollHeight;
+
+          const result = await chat.mcpRequest(serverId, "tools/call", {
+            name: toolName,
+            arguments: args,
+          });
+
+          const resultHtml = `<div class="response-container"><span class="response-badge">MCP Tool: ${toolName}</span>${md.html(JSON.stringify(result, null, 2))}</div>`;
+          chat("main").innerHTML = chat("main").innerHTML.replace(
+            `<div class="response-container"><span class="response-badge">MCP Tool: ${toolName}</span><div>Calling tool...</div></div>`,
+            resultHtml,
+          );
+          chat("left").scrollTop = chat("left").scrollHeight;
+        } catch (error) {
+          chat("main").innerHTML = chat("main").innerHTML.replace(
+            `<div class="response-container"><span class="response-badge">MCP Tool: ${toolName}</span><div>Calling tool...</div></div>`,
+            `<div class="response-container"><span class="response-badge" style="background:#dc3545;">MCP Tool: ${toolName}</span><div style="color:#dc3545;">Error: ${error.message}</div></div>`,
+          );
+        }
+      };
+
+      chat.getMcpResource = async (serverId, uri) => {
+        try {
+          chat("main").innerHTML +=
+            `<div class="response-container"><span class="response-badge">MCP Resource</span><div>Loading resource...</div></div>`;
+          chat("left").scrollTop = chat("left").scrollHeight;
+
+          const result = await chat.mcpRequest(serverId, "resources/read", {
+            uri: uri,
+          });
+
+          const resultHtml = `<div class="response-container"><span class="response-badge">MCP Resource</span>${md.html(JSON.stringify(result, null, 2))}</div>`;
+          chat("main").innerHTML = chat("main").innerHTML.replace(
+            `<div class="response-container"><span class="response-badge">MCP Resource</span><div>Loading resource...</div></div>`,
+            resultHtml,
+          );
+          chat("left").scrollTop = chat("left").scrollHeight;
+        } catch (error) {
+          chat("main").innerHTML = chat("main").innerHTML.replace(
+            `<div class="response-container"><span class="response-badge">MCP Resource</span><div>Loading resource...</div></div>`,
+            `<div class="response-container"><span class="response-badge" style="background:#dc3545;">MCP Resource</span><div style="color:#dc3545;">Error: ${error.message}</div></div>`,
+          );
+        }
+      };
+
       // Show settings
       chat.showSettings = () => {
         chat("settingsModal").style.display = "block";
@@ -1565,9 +2154,9 @@
           chat.hideSettings();
         }
       };
-      
+
       // Handle window resize to update modal state
-      window.addEventListener('resize', () => {
+      window.addEventListener("resize", () => {
         if (window.innerWidth > 880) {
           document.body.classList.remove("modal-open");
         } else if (chat("settingsModal").style.display === "block") {
@@ -1821,8 +2410,9 @@
         });
 
         chat("left").scrollTop = chat("left").scrollHeight;
-          chat("btnSend").innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="12" height="12" rx="1" fill="currentColor"/></svg>';
-          chat("btnSend").disabled = true;
+        chat("btnSend").innerHTML =
+          '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="12" height="12" rx="1" fill="currentColor"/></svg>';
+        chat("btnSend").disabled = true;
 
         Promise.allSettled(promises).then((results) => {
           const responses = {};
@@ -1852,7 +2442,8 @@
           });
 
           chat.updateHistoryDisplay();
-          chat("btnSend").innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M.5 1.163A1 1 0 0 1 1.97.28l12.868 6.837a1 1 0 0 1 0 1.766L1.969 15.72A1 1 0 0 1 .5 14.836V10.33a1 1 0 0 1 .816-.983L8.5 8 1.316 6.653A1 1 0 0 1 .5 5.67V1.163Z" fill="currentColor"/></svg>';
+          chat("btnSend").innerHTML =
+            '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M.5 1.163A1 1 0 0 1 1.97.28l12.868 6.837a1 1 0 0 1 0 1.766L1.969 15.72A1 1 0 0 1 .5 14.836V10.33a1 1 0 0 1 .816-.983L8.5 8 1.316 6.653A1 1 0 0 1 .5 5.67V1.163Z" fill="currentColor"/></svg>';
           chat("btnSend").disabled = false;
 
           if (document.body.clientWidth > 800) {
@@ -1920,7 +2511,8 @@
       // Submit prompt
       chat.submit = () => {
         if (chat("btnSend").disabled) {
-          chat("btnSend").innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M.5 1.163A1 1 0 0 1 1.97.28l12.868 6.837a1 1 0 0 1 0 1.766L1.969 15.72A1 1 0 0 1 .5 14.836V10.33a1 1 0 0 1 .816-.983L8.5 8 1.316 6.653A1 1 0 0 1 .5 5.67V1.163Z" fill="currentColor"/></svg>';
+          chat("btnSend").innerHTML =
+            '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M.5 1.163A1 1 0 0 1 1.97.28l12.868 6.837a1 1 0 0 1 0 1.766L1.969 15.72A1 1 0 0 1 .5 14.836V10.33a1 1 0 0 1 .816-.983L8.5 8 1.316 6.653A1 1 0 0 1 .5 5.67V1.163Z" fill="currentColor"/></svg>';
           chat("btnSend").disabled = false;
           return;
         }
@@ -1961,9 +2553,12 @@
           localStorage.clear();
           chat.providers = [];
           chat.activeLLMs = [];
+          chat.mcpServers = [];
           chat.history = [];
           chat.updateProvidersList();
           chat.updateLLMSelector();
+          chat.updateMcpServersList();
+          chat.updateMcpToolsPanel();
           chat("main").innerHTML =
             "<h3>Welcome to Multi-LLM Chatbot.</h3><p>Please configure your LLM providers in Settings.</p>";
         }
