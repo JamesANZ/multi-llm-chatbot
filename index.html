@@ -1,5 +1,5 @@
 ﻿<!doctype html>
-<html>
+<html lang="en">
   <head>
     <title>Multi-LLM Chat</title>
     <meta
@@ -38,7 +38,81 @@
           Prompts
         </button>
       </div>
+      <button
+        id="hamburgerMenu"
+        class="hamburger-button"
+        onclick="chat.toggleMobileMenu()"
+        title="Menu"
+      >
+        ☰
+      </button>
     </header>
+
+    <!-- Mobile Menu Overlay -->
+    <div
+      id="mobileMenuOverlay"
+      class="mobile-menu-overlay"
+      onclick="chat.toggleMobileMenu()"
+    ></div>
+    <div id="mobileMenu" class="mobile-menu">
+      <div class="mobile-menu-header">
+        <h3>Menu</h3>
+        <button
+          class="mobile-menu-close"
+          onclick="chat.toggleMobileMenu()"
+          title="Close"
+        >
+          ×
+        </button>
+      </div>
+      <div class="mobile-menu-items">
+        <button
+          onclick="
+            chat.showAnalytics();
+            chat.toggleMobileMenu();
+          "
+          title="View Analytics"
+        >
+          📊 Analytics
+        </button>
+        <button
+          onclick="
+            chat.showSettings();
+            chat.toggleMobileMenu();
+          "
+          title="Settings"
+        >
+          ⚙️ Settings
+        </button>
+        <button
+          onclick="
+            chat.recognition();
+            chat.toggleMobileMenu();
+          "
+          title="voice input"
+        >
+          🎤 Voice Input
+        </button>
+        <button
+          onclick="
+            chat.logout();
+            chat.toggleMobileMenu();
+          "
+          title="clear all data"
+        >
+          Logout
+        </button>
+        <button
+          onclick="
+            chat.export();
+            chat.toggleMobileMenu();
+          "
+          title="export conversation"
+        >
+          Export
+        </button>
+      </div>
+    </div>
 
     <!-- Analytics Modal -->
     <div id="analyticsModal" class="modal-overlay">

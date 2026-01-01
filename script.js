@@ -1920,6 +1920,39 @@ chat.recognition = () => {
   chat("prompt").value = "Listening...";
 };
 
+// Mobile menu toggle
+chat.toggleMobileMenu = () => {
+  const menu = document.getElementById("mobileMenu");
+  const overlay = document.getElementById("mobileMenuOverlay");
+  const body = document.body;
+
+  if (menu && overlay) {
+    const isActive = menu.classList.contains("active");
+
+    if (isActive) {
+      // Close menu
+      menu.classList.remove("active");
+      overlay.classList.remove("active");
+      body.classList.remove("mobile-menu-open");
+    } else {
+      // Open menu
+      menu.classList.add("active");
+      overlay.classList.add("active");
+      body.classList.add("mobile-menu-open");
+    }
+  }
+};
+
+// Close mobile menu on escape key
+document.addEventListener("keydown", function (event) {
+  if (event.key === "Escape") {
+    const menu = document.getElementById("mobileMenu");
+    if (menu && menu.classList.contains("active")) {
+      chat.toggleMobileMenu();
+    }
+  }
+});
+
 // Auto-resize textarea on mobile
 chat.autoResizeTextarea = () => {
   const textarea = chat("prompt");
