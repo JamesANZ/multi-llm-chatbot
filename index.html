@@ -475,6 +475,9 @@
           display: block;
           margin-top: 2px;
         }
+        #analyticsSummary {
+          display: none !important;
+        }
         #menu {
           gap: 6px;
           flex-wrap: wrap;
@@ -592,18 +595,22 @@
           height: 20px;
           flex-shrink: 0;
         }
-        #settingsContent {
+        #settingsContent,
+        #analyticsContent {
           width: 95%;
           margin: 5% auto;
           max-height: 90vh;
         }
-        #settingsHeader {
+        #settingsHeader,
+        #analyticsHeader {
           padding: 16px;
         }
-        #settingsHeader h2 {
+        #settingsHeader h2,
+        #analyticsHeader h2 {
           font-size: 20px;
         }
-        #settingsBody {
+        #settingsBody,
+        #analyticsBody {
           padding: 16px;
         }
         .provider-item {
@@ -694,13 +701,16 @@
             96vh - env(safe-area-inset-top) - env(safe-area-inset-bottom)
           );
         }
-        #settingsHeader {
+        #settingsHeader,
+        #analyticsHeader {
           padding: 12px;
         }
-        #settingsHeader h2 {
+        #settingsHeader h2,
+        #analyticsHeader h2 {
           font-size: 18px;
         }
-        #settingsBody {
+        #settingsBody,
+        #analyticsBody {
           padding: 12px;
         }
         .provider-form input,
@@ -761,7 +771,8 @@
           position: fixed;
           width: 100%;
         }
-        #settingsModal {
+        #settingsModal,
+        #analyticsModal {
           position: fixed;
           top: 0;
           left: 0;
@@ -770,7 +781,8 @@
           overflow-y: auto;
           -webkit-overflow-scrolling: touch;
         }
-        #settingsContent {
+        #settingsContent,
+        #analyticsContent {
           margin-top: max(5%, env(safe-area-inset-top));
           margin-bottom: max(5%, env(safe-area-inset-bottom));
         }
@@ -818,8 +830,22 @@
         >
           Multi-provider LLM chatbot
         </span>
+        <span
+          id="analyticsSummary"
+          style="
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 12px;
+            font-weight: 500;
+            margin-top: 4px;
+            display: block;
+          "
+        >
+        </span>
       </div>
       <div id="menu">
+        <button onclick="chat.showAnalytics()" title="View Analytics">
+          📊 Analytics
+        </button>
         <button onclick="chat.showSettings()" title="Settings">
           ⚙️ Settings
         </button>
@@ -837,6 +863,75 @@
         </button>
       </div>
     </header>
+
+    <!-- Analytics Modal -->
+    <div
+      id="analyticsModal"
+      style="
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+      "
+    >
+      <div
+        id="analyticsContent"
+        style="
+          background: #fff;
+          margin: 5% auto;
+          padding: 0;
+          width: 90%;
+          max-width: 800px;
+          border-radius: 12px;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+          max-height: 85vh;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+        "
+      >
+        <div
+          id="analyticsHeader"
+          style="
+            background: linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%);
+            color: #fff;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+          "
+        >
+          <h2 style="margin: 0; font-size: 24px">📊 Cost & Token Analytics</h2>
+          <button
+            id="analyticsClose"
+            onclick="chat.hideAnalytics()"
+            style="
+              background: none;
+              border: none;
+              color: #fff;
+              font-size: 28px;
+              cursor: pointer;
+              padding: 0;
+              width: 32px;
+              height: 32px;
+              line-height: 32px;
+            "
+          >
+            &times;
+          </button>
+        </div>
+        <div
+          id="analyticsBody"
+          style="padding: 20px; overflow-y: auto; flex: 1"
+        >
+          <div id="analyticsStats"></div>
+        </div>
+      </div>
+    </div>
 
     <!-- Settings Modal -->
     <div id="settingsModal">
@@ -1438,6 +1533,11 @@
       chat.activeLLMs = [];
       chat.providers = [];
       chat.mcpServers = [];
+      chat.analytics = {
+        totalTokens: 0,
+        totalCost: 0,
+        providerStats: {},
+      };
 
       // Load providers from localStorage
       chat.loadProviders = () => {
@@ -1447,10 +1547,15 @@
         chat.activeLLMs = active ? JSON.parse(active) : [];
         const mcpStored = localStorage.getItem("mcp_servers");
         chat.mcpServers = mcpStored ? JSON.parse(mcpStored) : [];
+        const analyticsStored = localStorage.getItem("analytics");
+        if (analyticsStored) {
+          chat.analytics = JSON.parse(analyticsStored);
+        }
         chat.updateLLMSelector();
         chat.updateProvidersList();
         chat.updateMcpServersList();
         chat.updateMcpToolsPanel();
+        chat.updateAnalytics();
       };
 
       // Save providers to localStorage
@@ -1458,6 +1563,93 @@
         localStorage.setItem("llm_providers", JSON.stringify(chat.providers));
         localStorage.setItem("active_llms", JSON.stringify(chat.activeLLMs));
         localStorage.setItem("mcp_servers", JSON.stringify(chat.mcpServers));
+        localStorage.setItem("analytics", JSON.stringify(chat.analytics));
+      };
+
+      // Estimate token count (rough approximation: ~4 characters per token)
+      chat.estimateTokens = (text) => {
+        if (!text) return 0;
+        // More accurate: count words and add punctuation/whitespace
+        const words = text.trim().split(/\s+/).length;
+        const chars = text.length;
+        // Average: ~0.75 tokens per word, or ~4 chars per token
+        return Math.ceil(Math.max(words * 0.75, chars / 4));
+      };
+
+      // Provider pricing data (per 1M tokens, as of 2024)
+      chat.pricingData = {
+        openai: {
+          "gpt-4o": { input: 2.5, output: 10 },
+          "gpt-4o-mini": { input: 0.15, output: 0.6 },
+          "gpt-4-turbo": { input: 10, output: 30 },
+          "gpt-4": { input: 30, output: 60 },
+          "gpt-3.5-turbo": { input: 0.5, output: 1.5 },
+          "o1-preview": { input: 15, output: 60 },
+          "o1-mini": { input: 3, output: 12 },
+          default: { input: 2.5, output: 10 },
+        },
+        anthropic: {
+          "claude-3.5-sonnet-20241022": { input: 3, output: 15 },
+          "claude-3-opus-20240229": { input: 15, output: 75 },
+          "claude-3-sonnet-20240229": { input: 3, output: 15 },
+          "claude-3-haiku-20240307": { input: 0.25, output: 1.25 },
+          default: { input: 3, output: 15 },
+        },
+        gemini: {
+          "gemini-2.5-flash": { input: 0.075, output: 0.3 },
+          "gemini-2.0-flash-exp": { input: 0.075, output: 0.3 },
+          "gemini-1.5-pro": { input: 1.25, output: 5 },
+          "gemini-1.5-flash": { input: 0.075, output: 0.3 },
+          "gemini-pro": { input: 0.5, output: 1.5 },
+          default: { input: 0.5, output: 1.5 },
+        },
+        deepseek: {
+          "deepseek-r1": { input: 0.55, output: 2.19 },
+          "deepseek-chat": { input: 0.14, output: 0.28 },
+          "deepseek-coder": { input: 0.14, output: 0.28 },
+          default: { input: 0.55, output: 2.19 },
+        },
+        grok: {
+          "grok-3": { input: 1, output: 3 },
+          "grok-2": { input: 0.5, output: 1.5 },
+          "grok-beta": { input: 0.5, output: 1.5 },
+          default: { input: 1, output: 3 },
+        },
+        kimi: {
+          "moonshot-v1-128k": { input: 0.12, output: 0.12 },
+          "moonshot-v1-32k": { input: 0.06, output: 0.06 },
+          "moonshot-v1-8k": { input: 0.03, output: 0.03 },
+          default: { input: 0.12, output: 0.12 },
+        },
+        perplexity: {
+          "sonar-pro": { input: 0.001, output: 0.001 },
+          "sonar-medium-online": { input: 0.0005, output: 0.0005 },
+          "sonar-small-online": { input: 0.0002, output: 0.0002 },
+          default: { input: 0.001, output: 0.001 },
+        },
+        mistral: {
+          "mistral-large-latest": { input: 2.7, output: 8.1 },
+          "mistral-medium-latest": { input: 2.7, output: 8.1 },
+          "mistral-small-latest": { input: 0.2, output: 0.6 },
+          "pixtral-large-latest": { input: 2.7, output: 8.1 },
+          default: { input: 2.7, output: 8.1 },
+        },
+      };
+
+      // Calculate cost for a provider/model
+      chat.calculateCost = (
+        providerTemplate,
+        model,
+        inputTokens,
+        outputTokens,
+      ) => {
+        const pricing = chat.pricingData[providerTemplate];
+        if (!pricing) return 0;
+
+        const modelPricing = pricing[model] || pricing.default;
+        const inputCost = (inputTokens / 1000000) * modelPricing.input;
+        const outputCost = (outputTokens / 1000000) * modelPricing.output;
+        return inputCost + outputCost;
       };
 
       // Get provider API key
@@ -2131,6 +2323,159 @@
         }
       };
 
+      // Show analytics
+      chat.showAnalytics = () => {
+        chat("analyticsModal").style.display = "block";
+        chat.updateAnalytics();
+        // Prevent body scroll on mobile when modal is open
+        if (window.innerWidth <= 880) {
+          document.body.classList.add("modal-open");
+        }
+      };
+
+      // Hide analytics
+      chat.hideAnalytics = () => {
+        chat("analyticsModal").style.display = "none";
+        // Re-enable body scroll
+        document.body.classList.remove("modal-open");
+      };
+
+      // Update analytics display
+      chat.updateAnalytics = () => {
+        const statsDiv = chat("analyticsStats");
+        const summaryDiv = chat("analyticsSummary");
+
+        const totalTokens = chat.analytics.totalTokens || 0;
+        const totalCost = chat.analytics.totalCost || 0;
+        const providerStats = chat.analytics.providerStats || {};
+
+        // Update header summary
+        if (summaryDiv) {
+          if (totalTokens > 0 || totalCost > 0) {
+            summaryDiv.innerHTML = `📊 ${totalTokens.toLocaleString()} tokens • 💰 $${totalCost.toFixed(4)}`;
+          } else {
+            summaryDiv.innerHTML = "";
+          }
+        }
+
+        if (!statsDiv) return;
+
+        let html = `
+          <div style="background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+            <h3 style="margin-top: 0; color: #333;">Overall Statistics</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
+              <div style="background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Total Tokens</div>
+                <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">${totalTokens.toLocaleString()}</div>
+              </div>
+              <div style="background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Total Cost</div>
+                <div style="font-size: 24px; font-weight: bold; color: #10b981;">$${totalCost.toFixed(4)}</div>
+              </div>
+              <div style="background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Conversations</div>
+                <div style="font-size: 24px; font-weight: bold; color: #8b5cf6;">${chat.history.length}</div>
+              </div>
+            </div>
+          </div>
+        `;
+
+        if (Object.keys(providerStats).length > 0) {
+          html += `
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px;">
+              <h3 style="margin-top: 0; color: #333;">Provider Breakdown</h3>
+              <div style="margin-top: 15px;">
+          `;
+
+          Object.keys(providerStats).forEach((providerId) => {
+            const provider = chat.providers.find((p) => p.id === providerId);
+            const stats = providerStats[providerId];
+            const providerName = provider ? provider.name : providerId;
+            const avgCost =
+              stats.requests > 0 ? stats.cost / stats.requests : 0;
+            const avgTokens =
+              stats.requests > 0 ? stats.tokens / stats.requests : 0;
+
+            html += `
+              <div style="background: #fff; padding: 15px; margin-bottom: 12px; border-radius: 8px; border-left: 4px solid #3b82f6; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                <div style="font-weight: bold; font-size: 16px; color: #333; margin-bottom: 10px;">${providerName}</div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; font-size: 14px;">
+                  <div>
+                    <div style="color: #666; font-size: 12px;">Total Tokens</div>
+                    <div style="font-weight: 600; color: #3b82f6;">${stats.tokens.toLocaleString()}</div>
+                  </div>
+                  <div>
+                    <div style="color: #666; font-size: 12px;">Total Cost</div>
+                    <div style="font-weight: 600; color: #10b981;">$${stats.cost.toFixed(4)}</div>
+                  </div>
+                  <div>
+                    <div style="color: #666; font-size: 12px;">Requests</div>
+                    <div style="font-weight: 600; color: #8b5cf6;">${stats.requests}</div>
+                  </div>
+                  <div>
+                    <div style="color: #666; font-size: 12px;">Avg Cost/Request</div>
+                    <div style="font-weight: 600; color: #f59e0b;">$${avgCost.toFixed(4)}</div>
+                  </div>
+                  <div>
+                    <div style="color: #666; font-size: 12px;">Avg Tokens/Request</div>
+                    <div style="font-weight: 600; color: #06b6d4;">${Math.round(avgTokens)}</div>
+                  </div>
+                </div>
+              </div>
+            `;
+          });
+
+          html += `
+              </div>
+            </div>
+          `;
+        } else {
+          html += `
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; text-align: center; color: #666;">
+              <p>No analytics data yet. Start chatting to see statistics!</p>
+            </div>
+          `;
+        }
+
+        // Add conversation breakdown
+        if (chat.history.length > 0) {
+          html += `
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-top: 20px;">
+              <h3 style="margin-top: 0; color: #333;">Recent Conversations</h3>
+              <div style="margin-top: 15px; max-height: 300px; overflow-y: auto;">
+          `;
+
+          // Show last 10 conversations
+          const recentHistory = chat.history.slice(-10).reverse();
+          recentHistory.forEach((entry, idx) => {
+            const convCost = entry.totalCost || 0;
+            const convTokens = entry.totalTokens || 0;
+            const promptPreview =
+              entry.prompt.length > 50
+                ? entry.prompt.substring(0, 50) + "..."
+                : entry.prompt;
+
+            html += `
+              <div style="background: #fff; padding: 12px; margin-bottom: 8px; border-radius: 6px; border-left: 3px solid #06b6d4; font-size: 13px;">
+                <div style="font-weight: 600; color: #333; margin-bottom: 5px;">${promptPreview}</div>
+                <div style="display: flex; gap: 15px; color: #666; font-size: 12px;">
+                  <span>📊 ${convTokens.toLocaleString()} tokens</span>
+                  <span>💰 $${convCost.toFixed(4)}</span>
+                  <span>🤖 ${entry.providers ? entry.providers.length : 0} providers</span>
+                </div>
+              </div>
+            `;
+          });
+
+          html += `
+              </div>
+            </div>
+          `;
+        }
+
+        statsDiv.innerHTML = html;
+      };
+
       // Show settings
       chat.showSettings = () => {
         chat("settingsModal").style.display = "block";
@@ -2153,13 +2498,19 @@
         if (event.target.id === "settingsModal") {
           chat.hideSettings();
         }
+        if (event.target.id === "analyticsModal") {
+          chat.hideAnalytics();
+        }
       };
 
       // Handle window resize to update modal state
       window.addEventListener("resize", () => {
         if (window.innerWidth > 880) {
           document.body.classList.remove("modal-open");
-        } else if (chat("settingsModal").style.display === "block") {
+        } else if (
+          chat("settingsModal").style.display === "block" ||
+          chat("analyticsModal").style.display === "block"
+        ) {
           document.body.classList.add("modal-open");
         }
       });
@@ -2253,11 +2604,34 @@
 
           const controller = new AbortController();
           let result = "";
+          let inputTokens = 0;
+          let outputTokens = 0;
+          let usageCaptured = false;
           const divId = `receiving_${providerId}`;
+
+          // Estimate input tokens from prompt and history
+          let promptTokens = chat.estimateTokens(prompt);
+          if (body.messages) {
+            body.messages.forEach((msg) => {
+              promptTokens += chat.estimateTokens(msg.content || "");
+            });
+          }
+          inputTokens = promptTokens;
+
           const updateUI = () => {
             if (chat(divId)) {
+              const estimatedOutput = chat.estimateTokens(result);
+              const cost = chat.calculateCost(
+                provider.template,
+                model,
+                inputTokens,
+                estimatedOutput,
+              );
+              const tokenInfo = usageCaptured
+                ? `<span style="font-size:11px; color:#666; margin-left:8px;">📊 ${inputTokens + outputTokens} tokens ($${cost.toFixed(4)})</span>`
+                : `<span style="font-size:11px; color:#666; margin-left:8px;">📊 ~${inputTokens + estimatedOutput} tokens (est. $${cost.toFixed(4)})</span>`;
               chat(divId).innerHTML =
-                `<span class="response-badge">${provider.name}</span>` +
+                `<span class="response-badge">${provider.name}</span>${tokenInfo}` +
                 md.html(result + "<br><br>");
             }
           };
@@ -2291,7 +2665,27 @@
             .then((reader) => {
               function processText({ done, value }) {
                 if (done) {
-                  resolve({ providerId, providerName: provider.name, result });
+                  // Finalize token counts if not captured
+                  if (!usageCaptured) {
+                    outputTokens = chat.estimateTokens(result);
+                  }
+                  const cost = chat.calculateCost(
+                    provider.template,
+                    model,
+                    inputTokens,
+                    outputTokens,
+                  );
+                  resolve({
+                    providerId,
+                    providerName: provider.name,
+                    result,
+                    tokens: {
+                      input: inputTokens,
+                      output: outputTokens,
+                      total: inputTokens + outputTokens,
+                    },
+                    cost: cost,
+                  });
                   return;
                 }
 
@@ -2305,10 +2699,26 @@
                     lines[i] === "data: [DONE]" ||
                     lines[i] === "event: message_stop"
                   ) {
+                    // Finalize token counts if not captured
+                    if (!usageCaptured) {
+                      outputTokens = chat.estimateTokens(result);
+                    }
+                    const cost = chat.calculateCost(
+                      provider.template,
+                      model,
+                      inputTokens,
+                      outputTokens,
+                    );
                     resolve({
                       providerId,
                       providerName: provider.name,
                       result,
+                      tokens: {
+                        input: inputTokens,
+                        output: outputTokens,
+                        total: inputTokens + outputTokens,
+                      },
+                      cost: cost,
                     });
                     return;
                   }
@@ -2316,6 +2726,23 @@
                   if (lines[i].startsWith("data: ")) {
                     try {
                       const json = JSON.parse(lines[i].substring(6));
+
+                      // Capture token usage from API responses
+                      if (json.usage) {
+                        // OpenAI format
+                        if (json.usage.prompt_tokens)
+                          inputTokens = json.usage.prompt_tokens;
+                        if (json.usage.completion_tokens)
+                          outputTokens = json.usage.completion_tokens;
+                        usageCaptured = true;
+                      } else if (json.type === "message_stop" && json.usage) {
+                        // Anthropic format
+                        if (json.usage.input_tokens)
+                          inputTokens = json.usage.input_tokens;
+                        if (json.usage.output_tokens)
+                          outputTokens = json.usage.output_tokens;
+                        usageCaptured = true;
+                      }
 
                       // OpenAI format
                       if (json.choices && json.choices[0]) {
@@ -2352,6 +2779,15 @@
                               updateUI();
                             }
                           });
+                        }
+                        // Gemini usage metadata
+                        if (json.usageMetadata) {
+                          if (json.usageMetadata.promptTokenCount)
+                            inputTokens = json.usageMetadata.promptTokenCount;
+                          if (json.usageMetadata.candidatesTokenCount)
+                            outputTokens =
+                              json.usageMetadata.candidatesTokenCount;
+                          usageCaptured = true;
                         }
                       }
                     } catch (e) {
@@ -2416,15 +2852,34 @@
 
         Promise.allSettled(promises).then((results) => {
           const responses = {};
+          const tokenData = {};
+          const costData = {};
+          let totalCost = 0;
+          let totalTokens = 0;
+
           results.forEach((result, index) => {
             const providerId = chat.activeLLMs[index];
             const divId = receivingDivs[providerId];
 
             if (result.status === "fulfilled") {
-              const { providerName, result: text } = result.value;
+              const { providerName, result: text, tokens, cost } = result.value;
               responses[providerId] = text;
+
+              if (tokens) {
+                tokenData[providerId] = tokens;
+                totalTokens += tokens.total;
+              }
+              if (cost !== undefined) {
+                costData[providerId] = cost;
+                totalCost += cost;
+              }
+
+              const tokenInfo =
+                tokens && cost !== undefined
+                  ? `<span style="font-size:11px; color:#666; margin-left:8px;">📊 ${tokens.total} tokens ($${cost.toFixed(4)})</span>`
+                  : "";
               chat(divId).innerHTML =
-                `<span class="response-badge">${providerName}</span>` +
+                `<span class="response-badge">${providerName}</span>${tokenInfo}` +
                 md.html(text);
             } else {
               const { providerName, error } = result.reason;
@@ -2433,15 +2888,44 @@
             }
           });
 
+          // Update analytics
+          chat.analytics.totalTokens += totalTokens;
+          chat.analytics.totalCost += totalCost;
+
+          chat.activeLLMs.forEach((providerId) => {
+            if (!chat.analytics.providerStats[providerId]) {
+              chat.analytics.providerStats[providerId] = {
+                tokens: 0,
+                cost: 0,
+                requests: 0,
+              };
+            }
+            if (tokenData[providerId]) {
+              chat.analytics.providerStats[providerId].tokens +=
+                tokenData[providerId].total;
+            }
+            if (costData[providerId] !== undefined) {
+              chat.analytics.providerStats[providerId].cost +=
+                costData[providerId];
+            }
+            chat.analytics.providerStats[providerId].requests += 1;
+          });
+
           chat.history.push({
             prompt: prompt,
             results: responses,
             providers: chat.activeLLMs.map(
               (id) => chat.providers.find((p) => p.id === id).name,
             ),
+            tokens: tokenData,
+            costs: costData,
+            totalCost: totalCost,
+            totalTokens: totalTokens,
           });
 
+          chat.saveProviders();
           chat.updateHistoryDisplay();
+          chat.updateAnalytics();
           chat("btnSend").innerHTML =
             '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M.5 1.163A1 1 0 0 1 1.97.28l12.868 6.837a1 1 0 0 1 0 1.766L1.969 15.72A1 1 0 0 1 .5 14.836V10.33a1 1 0 0 1 .816-.983L8.5 8 1.316 6.653A1 1 0 0 1 .5 5.67V1.163Z" fill="currentColor"/></svg>';
           chat("btnSend").disabled = false;
@@ -2481,8 +2965,14 @@
           if (entry.results) {
             Object.keys(entry.results).forEach((providerId) => {
               const provider = chat.providers.find((p) => p.id === providerId);
+              const tokens = entry.tokens && entry.tokens[providerId];
+              const cost = entry.costs && entry.costs[providerId];
+              const tokenInfo =
+                tokens && cost !== undefined
+                  ? `<span style="font-size:11px; color:#666; margin-left:8px;">📊 ${tokens.total} tokens ($${cost.toFixed(4)})</span>`
+                  : "";
               html1 +=
-                `<div class="response-container"><span class="response-badge">${provider ? provider.name : providerId}</span>` +
+                `<div class="response-container"><span class="response-badge">${provider ? provider.name : providerId}</span>${tokenInfo}` +
                 md.html(entry.results[providerId]) +
                 "</div>\n";
             });
@@ -2555,10 +3045,16 @@
           chat.activeLLMs = [];
           chat.mcpServers = [];
           chat.history = [];
+          chat.analytics = {
+            totalTokens: 0,
+            totalCost: 0,
+            providerStats: {},
+          };
           chat.updateProvidersList();
           chat.updateLLMSelector();
           chat.updateMcpServersList();
           chat.updateMcpToolsPanel();
+          chat.updateAnalytics();
           chat("main").innerHTML =
             "<h3>Welcome to Multi-LLM Chatbot.</h3><p>Please configure your LLM providers in Settings.</p>";
         }
