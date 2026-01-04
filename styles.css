@@ -1025,6 +1025,9 @@ header {
   height: 100%;
   background: rgba(0, 0, 0, 0.5);
 }
+#systemPromptModal {
+  z-index: 1100;
+}
 .modal-content {
   background: #fff;
   margin: 5% auto;
