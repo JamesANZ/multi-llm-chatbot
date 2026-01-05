@@ -335,6 +335,7 @@ slmChat.addModel = () => {
   const modelDomain = slmChat("modelDomain")?.value.trim();
   const modelDescription = slmChat("modelDescription")?.value.trim();
   const customEndpoint = slmChat("customEndpoint")?.value.trim();
+  const modelKeywords = slmChat("modelKeywords")?.value.trim();
   const isNiche = slmChat("isNiche")?.checked || false;
 
   if (!modelId || !modelName || !modelDomain) {
@@ -361,6 +362,14 @@ slmChat.addModel = () => {
     newModel.customEndpoint = customEndpoint;
   }
 
+  // Add keywords if provided (comma-separated, convert to array)
+  if (modelKeywords) {
+    newModel.keywords = modelKeywords
+      .split(",")
+      .map((k) => k.trim())
+      .filter((k) => k.length > 0);
+  }
+
   slmChat.models.push(newModel);
   slmChat.saveData();
   slmChat.updateModelsList();
@@ -371,6 +380,7 @@ slmChat.addModel = () => {
   if (slmChat("modelDomain")) slmChat("modelDomain").value = "";
   if (slmChat("modelDescription")) slmChat("modelDescription").value = "";
   if (slmChat("customEndpoint")) slmChat("customEndpoint").value = "";
+  if (slmChat("modelKeywords")) slmChat("modelKeywords").value = "";
   if (slmChat("isNiche")) slmChat("isNiche").checked = false;
 
   alert("Model added successfully!");
@@ -406,6 +416,12 @@ slmChat.updateModelsList = () => {
             <strong>Custom Endpoint:</strong> ${model.customEndpoint}
            </div>`
         : "";
+      const keywordsBadge =
+        model.keywords && model.keywords.length > 0
+          ? `<div style="font-size: 11px; color: #28a745; margin-top: 4px;">
+            <strong>Keywords:</strong> ${model.keywords.join(", ")}
+           </div>`
+          : "";
       return `
       <div class="provider-item">
         <div class="provider-item-info">
@@ -416,6 +432,7 @@ slmChat.updateModelsList = () => {
           </div>
           ${model.description ? `<div style="font-size: 12px; color: #666; margin-top: 4px;">${model.description}</div>` : ""}
           ${customEndpointBadge}
+          ${keywordsBadge}
         </div>
         <div class="provider-item-actions">
           <button class="btn-delete" onclick="slmChat.deleteModel('${model.id}')">Delete</button>
@@ -534,8 +551,27 @@ slmChat.classifyPrompt = async (prompt) => {
   };
 
   // Count keyword matches (more sensitive: each match counts more)
+  // Use model-specific keywords if available, otherwise fall back to default domain keywords
   domains.forEach((domain) => {
-    const keywords = domainKeywords[domain] || [];
+    // Get all models with this domain
+    const domainModels = slmChat.models.filter((m) => m.domain === domain);
+
+    // Collect keywords from models (model-specific keywords take precedence)
+    let keywords = [];
+    domainModels.forEach((model) => {
+      if (model.keywords && Array.isArray(model.keywords)) {
+        keywords = keywords.concat(model.keywords);
+      }
+    });
+
+    // If no model-specific keywords, use default domain keywords
+    if (keywords.length === 0) {
+      keywords = domainKeywords[domain] || [];
+    }
+
+    // Remove duplicates
+    keywords = [...new Set(keywords)];
+
     keywords.forEach((keyword) => {
       if (promptLower.includes(keyword.toLowerCase())) {
         scores[domain]++;

@@ -48,4 +48,3 @@ For self-hosted Hugging Face Inference Endpoints, provide the base URL (e.g., `h
 
 - Models available via Hugging Face Router API (OpenAI-compatible format)
 - Custom self-hosted models via Inference Endpoints (standard HF API format)
-
