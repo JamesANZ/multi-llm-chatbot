@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Multi-SLM Chat Router</title>
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes"
+    />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header>
+      <div id="heading">
+        <div class="heading-title">Multi-SLM Chat Router</div>
+        <span id="message" class="heading-subtitle">
+          Intelligent SLM routing with classifier-based selection
+        </span>
+      </div>
+      <div id="menu">
+        <button onclick="slmChat.showSettings()" title="Settings">
+          ⚙️ Settings
+        </button>
+        <button onclick="slmChat.logout()" title="clear all data">
+          Logout
+        </button>
+        <button onclick="slmChat.export()" title="export conversation">
+          Export
+        </button>
+      </div>
+    </header>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal-overlay">
+      <div id="settingsContent" class="modal-content">
+        <div id="settingsHeader" class="modal-header">
+          <h2>SLM Router Settings</h2>
+          <button
+            id="settingsClose"
+            onclick="slmChat.hideSettings()"
+            class="modal-close"
+          >
+            &times;
+          </button>
+        </div>
+        <div id="settingsBody" class="modal-body">
+          <div class="settings-section">
+            <h3>Hugging Face API Token</h3>
+            <div class="provider-form">
+              <input
+                type="password"
+                id="hfApiKey"
+                placeholder="Enter Hugging Face API token (hf_...)"
+              />
+              <button onclick="slmChat.saveApiKey()">Save API Key</button>
+              <p style="font-size: 12px; color: #666; margin-top: 8px">
+                Get your free API token from
+                <a href="https://huggingface.co/settings/tokens" target="_blank"
+                  >Hugging Face</a
+                >
+              </p>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h3>Classifier Model</h3>
+            <div class="provider-form">
+              <select id="classifierModel">
+                <option value="facebook/bart-large-mnli">
+                  facebook/bart-large-mnli (Recommended)
+                </option>
+                <option value="typeform/distilbert-base-uncased-mnli">
+                  typeform/distilbert-base-uncased-mnli (Faster)
+                </option>
+              </select>
+              <button onclick="slmChat.saveClassifierModel()">
+                Save Classifier
+              </button>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h3>Add New SLM Model</h3>
+            <div class="provider-form">
+              <input
+                type="text"
+                id="modelId"
+                placeholder="Model ID (e.g., microsoft/Phi-3-mini-4k-instruct)"
+              />
+              <input
+                type="text"
+                id="modelName"
+                placeholder="Display Name (e.g., Phi-3 Mini)"
+              />
+              <input
+                type="text"
+                id="modelDomain"
+                placeholder="Domain/Category (e.g., general, coding, australian_tax)"
+              />
+              <input
+                type="text"
+                id="modelDescription"
+                placeholder="Description (optional)"
+              />
+              <input
+                type="text"
+                id="customEndpoint"
+                placeholder="Custom Endpoint URL (optional, for self-hosted models)"
+              />
+              <label style="display: flex; align-items: center; margin: 8px 0">
+                <input
+                  type="checkbox"
+                  id="isNiche"
+                  style="width: auto; margin-right: 8px"
+                />
+                Niche/Specialized Model
+              </label>
+              <button onclick="slmChat.addModel()">Add Model</button>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h3>Manage SLM Models</h3>
+            <div id="modelsList"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="content" class="content-wrapper">
+      <div id="right">
+        <div
+          id="statusPanel"
+          style="
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+          "
+        >
+          <div style="font-weight: bold; margin-bottom: 8px">Router Status</div>
+          <div id="routerStatus" style="font-size: 13px; color: #666">
+            Ready to route prompts
+          </div>
+        </div>
+        <div class="textarea-wrapper">
+          <textarea
+            id="prompt"
+            rows="3"
+            placeholder="Enter your prompt here..."
+            style="font-size: 16px"
+          ></textarea>
+          <button
+            id="btnSend"
+            accesskey="s"
+            onclick="slmChat.submit()"
+            title="[Alt-S] submit prompt"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M.5 1.163A1 1 0 0 1 1.97.28l12.868 6.837a1 1 0 0 1 0 1.766L1.969 15.72A1 1 0 0 1 .5 14.836V10.33a1 1 0 0 1 .816-.983L8.5 8 1.316 6.653A1 1 0 0 1 .5 5.67V1.163Z"
+                fill="currentColor"
+              />
+            </svg>
+          </button>
+        </div>
+        <div id="list" class="list-container">
+          <b>How to Use</b>
+          <ol style="padding-left: 20px; margin-top: 8px">
+            <li>
+              Click <b>Settings</b> to configure your Hugging Face API token
+            </li>
+            <li>Add SLM models or use the default collection</li>
+            <li>
+              Each model should have a domain/category (e.g., "general",
+              "coding", "australian_tax")
+            </li>
+            <li>Type your prompt and press <b>Send</b></li>
+            <li>
+              The router will automatically classify your prompt and route it to
+              the best SLM
+            </li>
+          </ol>
+          <p style="margin-top: 12px; font-size: 12px; color: #666">
+            <b>Tips:</b> Add niche models for specialized domains (e.g.,
+            Australian tax questions → model with "australian_tax" domain)
+          </p>
+        </div>
+      </div>
+      <div id="left">
+        <div id="main" class="main-content">
+          <h3>Welcome to Multi-SLM Chat Router.</h3>
+          <p class="desktop">
+            This router uses a lightweight classifier to automatically select
+            the best SLM for your prompts. Configure your models in Settings to
+            get started.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <script src="multi-slm-chat.js"></script>
+  </body>
+</html>
