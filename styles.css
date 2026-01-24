@@ -1140,3 +1140,38 @@ header {
   color: #666;
   margin-left: 8px;
 }
+
+/* Challenge Me tooltip */
+.challenge-info-tooltip {
+  position: relative;
+  display: inline-block;
+}
+
+.challenge-info-tooltip:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 125%;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #333;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 1000;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  pointer-events: none;
+}
+
+.challenge-info-tooltip:hover::before {
+  content: "";
+  position: absolute;
+  bottom: 120%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: #333;
+  z-index: 1000;
+  pointer-events: none;
+}

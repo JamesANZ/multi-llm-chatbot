@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <title>Multi-LLM Chat</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>"
+    />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes"
@@ -330,6 +333,41 @@
           <div id="tempSystemPromptList"></div>
         </div>
         <div class="textarea-wrapper">
+          <div
+            style="
+              margin-bottom: 8px;
+              display: flex;
+              align-items: center;
+              gap: 8px;
+            "
+          >
+            <label
+              style="
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                cursor: pointer;
+                font-size: 14px;
+                color: #333;
+              "
+            >
+              <input
+                type="checkbox"
+                id="challengeMeCheckbox"
+                style="width: auto; margin: 0; cursor: pointer"
+                onchange="chat.challengeModeEnabled = this.checked"
+              />
+              <span style="font-weight: 500">Challenge Me</span>
+            </label>
+            <span
+              class="challenge-info-tooltip"
+              style="font-size: 12px; color: #666; cursor: help"
+              data-tooltip="Test if the LLM agrees with contradictory statements by reversing your prompt's logic"
+              title="Test if the LLM agrees with contradictory statements by reversing your prompt's logic"
+            >
+              ⓘ
+            </span>
+          </div>
           <textarea
             id="prompt"
             rows="3"

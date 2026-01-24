@@ -359,6 +359,7 @@ chat.analytics = {
 };
 chat.systemPromptsCatalog = null;
 chat.systemPromptLoadingRequests = {}; // Track ongoing requests
+chat.challengeModeEnabled = false; // Challenge Me feature state
 
 // Load providers from localStorage
 chat.loadProviders = () => {
@@ -486,6 +487,49 @@ chat.getProviderModel = (providerId) => {
 // Save provider model
 chat.saveProviderModel = (providerId, model) => {
   localStorage.setItem(`model_${providerId}`, model);
+};
+
+// Get lightest available model for challenge mode
+chat.getLightestModel = () => {
+  // Priority list of light models (ordered by preference)
+  const lightModelPriority = [
+    "gpt-4o-mini",
+    "claude-3-haiku-20240307",
+    "gemini-1.5-flash",
+    "gpt-3.5-turbo",
+    "gemini-2.5-flash",
+  ];
+
+  // Check active providers for light models
+  for (const modelName of lightModelPriority) {
+    for (const providerId of chat.activeLLMs) {
+      const provider = chat.providers.find((p) => p.id === providerId);
+      if (!provider) continue;
+
+      const providerModel = chat.getProviderModel(providerId);
+      if (providerModel === modelName) {
+        const apiKey = chat.getProviderAPIKey(providerId);
+        if (apiKey) {
+          return { providerId, provider, model: providerModel, apiKey };
+        }
+      }
+    }
+  }
+
+  // Fallback: return first available active provider
+  if (chat.activeLLMs.length > 0) {
+    const providerId = chat.activeLLMs[0];
+    const provider = chat.providers.find((p) => p.id === providerId);
+    if (provider) {
+      const model = chat.getProviderModel(providerId);
+      const apiKey = chat.getProviderAPIKey(providerId);
+      if (apiKey && model) {
+        return { providerId, provider, model, apiKey };
+      }
+    }
+  }
+
+  return null;
 };
 
 // Add provider
@@ -1918,8 +1962,8 @@ chat.selectSystemPrompt = (promptPath, isTemporary) => {
   }
 };
 
-// Stream to a single LLM
-chat.streamToLLM = function (prompt, providerId) {
+// Stream to a single LLM (non-UI version for challenge mode)
+chat.streamToLLMNoUI = function (prompt, providerId, options = {}) {
   return new Promise(async (resolve, reject) => {
     const provider = chat.providers.find((p) => p.id === providerId);
     if (!provider) {
@@ -1935,16 +1979,309 @@ chat.streamToLLM = function (prompt, providerId) {
       return;
     }
 
-    // Get system prompt and prepend to user message
+    const skipHistory = options.skipHistory || false;
+    const skipSystemPrompt = options.skipSystemPrompt || false;
+
+    // Get system prompt and prepend to user message (unless skipping for challenge mode)
     let userMessageContent = prompt;
-    try {
-      const systemPrompt = await chat.getSystemPromptForProvider(providerId);
-      if (systemPrompt) {
-        userMessageContent = systemPrompt + "\n\n" + prompt;
+    if (!skipSystemPrompt) {
+      try {
+        const systemPrompt = await chat.getSystemPromptForProvider(providerId);
+        if (systemPrompt) {
+          userMessageContent = systemPrompt + "\n\n" + prompt;
+        }
+      } catch (error) {
+        console.error(`Error loading system prompt:`, error);
       }
-    } catch (error) {
-      console.error(`Error loading system prompt:`, error);
-      // Continue without system prompt if loading fails
+    }
+
+    const template =
+      chat.providerTemplates[provider.template] ||
+      chat.providerTemplates.openai;
+    let endpoint = provider.endpoint;
+    let headers = { "Content-Type": "application/json" };
+    let body = {};
+
+    // Configure based on provider type
+    if (
+      provider.template === "openai" ||
+      provider.template === "deepseek" ||
+      provider.template === "grok" ||
+      provider.template === "kimi" ||
+      provider.template === "perplexity" ||
+      provider.template === "mistral"
+    ) {
+      headers["Authorization"] = `Bearer ${apiKey}`;
+      body = {
+        model: model,
+        messages: [{ role: "user", content: userMessageContent }],
+        temperature: 0.8,
+        stream: true,
+      };
+
+      if (!skipHistory) {
+        for (
+          let i = chat.history.length - 1;
+          i >= 0 && i > chat.history.length - 3;
+          i--
+        ) {
+          body.messages.unshift({
+            role: "assistant",
+            content: chat.history[i].results[providerId] || "",
+          });
+          body.messages.unshift({
+            role: "user",
+            content: chat.history[i].prompt,
+          });
+        }
+      }
+    } else if (provider.template === "anthropic") {
+      headers["x-api-key"] = apiKey;
+      headers["anthropic-version"] = "2023-06-01";
+      headers["content-type"] = "application/json";
+      body = {
+        model: model,
+        messages: [{ role: "user", content: userMessageContent }],
+        max_tokens: 4096,
+        stream: true,
+      };
+    } else if (provider.template === "gemini") {
+      endpoint = endpoint.replace("{model}", model) + `?key=${apiKey}`;
+      headers = { "Content-Type": "application/json" };
+      body = {
+        contents: [{ parts: [{ text: userMessageContent }] }],
+        generationConfig: {
+          temperature: 0.8,
+          maxOutputTokens: 2048,
+        },
+      };
+    } else {
+      headers["Authorization"] = `Bearer ${apiKey}`;
+      body = {
+        model: model,
+        messages: [{ role: "user", content: userMessageContent }],
+        stream: true,
+      };
+    }
+
+    const controller = new AbortController();
+    let result = "";
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let usageCaptured = false;
+
+    // Estimate input tokens
+    let promptTokens = 0;
+    if (body.messages) {
+      body.messages.forEach((msg) => {
+        promptTokens += chat.estimateTokens(msg.content || "");
+      });
+    } else if (body.contents) {
+      body.contents.forEach((content) => {
+        if (content.parts) {
+          content.parts.forEach((part) => {
+            promptTokens += chat.estimateTokens(part.text || "");
+          });
+        }
+      });
+    }
+    inputTokens = promptTokens;
+
+    fetch(endpoint, {
+      method: "POST",
+      headers: headers,
+      body: JSON.stringify(body),
+      signal: controller.signal,
+      mode: "cors",
+    })
+      .then((response) => {
+        if (!response.ok) {
+          if (response.status == 401)
+            throw new Error(
+              `401 Unauthorized - Invalid API Key for ${provider.name}`,
+            );
+          if (response.status == 0)
+            throw new Error(
+              `CORS Error - ${provider.name} API doesn't allow browser requests. This API may require a server-side proxy.`,
+            );
+          throw new Error(
+            `Failed to get data from ${provider.name}, status ${response.status}`,
+          );
+        }
+        return response.body.pipeThrough(new TextDecoderStream()).getReader();
+      })
+      .then((reader) => {
+        function processText({ done, value }) {
+          if (done) {
+            if (!usageCaptured) {
+              outputTokens = chat.estimateTokens(result);
+            }
+            const cost = chat.calculateCost(
+              provider.template,
+              model,
+              inputTokens,
+              outputTokens,
+            );
+            resolve({
+              providerId,
+              providerName: provider.name,
+              result,
+              tokens: {
+                input: inputTokens,
+                output: outputTokens,
+                total: inputTokens + outputTokens,
+              },
+              cost: cost,
+            });
+            return;
+          }
+
+          const lines = value.split("\n");
+          for (let i in lines) {
+            if (lines[i].length === 0) continue;
+            if (lines[i].startsWith(":")) continue;
+
+            if (
+              lines[i] === "data: [DONE]" ||
+              lines[i] === "event: message_stop"
+            ) {
+              if (!usageCaptured) {
+                outputTokens = chat.estimateTokens(result);
+              }
+              const cost = chat.calculateCost(
+                provider.template,
+                model,
+                inputTokens,
+                outputTokens,
+              );
+              resolve({
+                providerId,
+                providerName: provider.name,
+                result,
+                tokens: {
+                  input: inputTokens,
+                  output: outputTokens,
+                  total: inputTokens + outputTokens,
+                },
+                cost: cost,
+              });
+              return;
+            }
+
+            if (lines[i].startsWith("data: ")) {
+              try {
+                const json = JSON.parse(lines[i].substring(6));
+
+                if (json.usage) {
+                  if (json.usage.prompt_tokens)
+                    inputTokens = json.usage.prompt_tokens;
+                  if (json.usage.completion_tokens)
+                    outputTokens = json.usage.completion_tokens;
+                  usageCaptured = true;
+                } else if (json.type === "message_stop" && json.usage) {
+                  if (json.usage.input_tokens)
+                    inputTokens = json.usage.input_tokens;
+                  if (json.usage.output_tokens)
+                    outputTokens = json.usage.output_tokens;
+                  usageCaptured = true;
+                }
+
+                if (json.choices && json.choices[0]) {
+                  const content =
+                    json.choices[0].delta?.content ||
+                    json.choices[0].message?.content ||
+                    "";
+                  if (content) {
+                    result += content;
+                  }
+                } else if (
+                  json.type === "content_block_delta" &&
+                  json.delta?.text
+                ) {
+                  result += json.delta.text;
+                } else if (
+                  json.type === "content_block" &&
+                  json.content_block?.text
+                ) {
+                  result += json.content_block.text;
+                } else if (json.candidates && json.candidates[0]) {
+                  const candidate = json.candidates[0];
+                  if (candidate.content && candidate.content.parts) {
+                    candidate.content.parts.forEach((part) => {
+                      if (part.text) {
+                        result += part.text;
+                      }
+                    });
+                  }
+                  if (json.usageMetadata) {
+                    if (json.usageMetadata.promptTokenCount)
+                      inputTokens = json.usageMetadata.promptTokenCount;
+                    if (json.usageMetadata.candidatesTokenCount)
+                      outputTokens = json.usageMetadata.candidatesTokenCount;
+                    usageCaptured = true;
+                  }
+                }
+              } catch (e) {
+                // Skip invalid JSON
+              }
+            }
+          }
+
+          return reader.read().then(processText);
+        }
+        return reader.read().then(processText);
+      })
+      .catch((error) => {
+        let errorMsg = error.message;
+        if (error.name === "TypeError" && error.message.includes("fetch")) {
+          errorMsg = `CORS Error - ${provider.name} API doesn't allow direct browser requests. This API requires a server-side proxy or CORS-enabled endpoint.`;
+        } else if (
+          error.message.includes("Failed to fetch") ||
+          error.message.includes("NetworkError")
+        ) {
+          errorMsg = `Network/CORS Error - ${provider.name} API may not support browser requests. Consider using a proxy server.`;
+        }
+        reject({
+          providerId,
+          providerName: provider.name,
+          error: errorMsg,
+        });
+      });
+  });
+};
+
+// Stream to a single LLM
+chat.streamToLLM = function (prompt, providerId, options = {}) {
+  return new Promise(async (resolve, reject) => {
+    const provider = chat.providers.find((p) => p.id === providerId);
+    if (!provider) {
+      reject(new Error(`Provider ${providerId} not found`));
+      return;
+    }
+
+    const apiKey = chat.getProviderAPIKey(providerId);
+    const model = chat.getProviderModel(providerId);
+
+    if (!apiKey || !model) {
+      reject(new Error(`API key or model not set for ${provider.name}`));
+      return;
+    }
+
+    const skipHistory = options.skipHistory || false;
+    const skipSystemPrompt = options.skipSystemPrompt || false;
+
+    // Get system prompt and prepend to user message (unless skipping)
+    let userMessageContent = prompt;
+    if (!skipSystemPrompt) {
+      try {
+        const systemPrompt = await chat.getSystemPromptForProvider(providerId);
+        if (systemPrompt) {
+          userMessageContent = systemPrompt + "\n\n" + prompt;
+        }
+      } catch (error) {
+        console.error(`Error loading system prompt:`, error);
+        // Continue without system prompt if loading fails
+      }
     }
 
     const template =
@@ -1972,20 +2309,22 @@ chat.streamToLLM = function (prompt, providerId) {
         stream: true,
       };
 
-      // Add history for OpenAI-compatible providers
-      for (
-        let i = chat.history.length - 1;
-        i >= 0 && i > chat.history.length - 3;
-        i--
-      ) {
-        body.messages.unshift({
-          role: "assistant",
-          content: chat.history[i].results[providerId] || "",
-        });
-        body.messages.unshift({
-          role: "user",
-          content: chat.history[i].prompt,
-        });
+      // Add history for OpenAI-compatible providers (unless skipHistory is true)
+      if (!skipHistory) {
+        for (
+          let i = chat.history.length - 1;
+          i >= 0 && i > chat.history.length - 3;
+          i--
+        ) {
+          body.messages.unshift({
+            role: "assistant",
+            content: chat.history[i].results[providerId] || "",
+          });
+          body.messages.unshift({
+            role: "user",
+            content: chat.history[i].prompt,
+          });
+        }
       }
     } else if (provider.template === "anthropic") {
       headers["x-api-key"] = apiKey;
@@ -2246,6 +2585,612 @@ chat.streamToLLM = function (prompt, providerId) {
   });
 };
 
+// Simple non-streaming API call helper for challenge mode
+chat.simpleApiCall = async function (
+  prompt,
+  providerId,
+  skipSystemPrompt = false,
+) {
+  const provider = chat.providers.find((p) => p.id === providerId);
+  if (!provider) {
+    throw new Error(`Provider ${providerId} not found`);
+  }
+
+  const apiKey = chat.getProviderAPIKey(providerId);
+  const model = chat.getProviderModel(providerId);
+
+  if (!apiKey || !model) {
+    throw new Error(`API key or model not set for ${provider.name}`);
+  }
+
+  let userMessageContent = prompt;
+  if (!skipSystemPrompt) {
+    try {
+      const systemPrompt = await chat.getSystemPromptForProvider(providerId);
+      if (systemPrompt) {
+        userMessageContent = systemPrompt + "\n\n" + prompt;
+      }
+    } catch (error) {
+      console.error(`Error loading system prompt:`, error);
+    }
+  }
+
+  const template =
+    chat.providerTemplates[provider.template] || chat.providerTemplates.openai;
+  let endpoint = provider.endpoint;
+  let headers = { "Content-Type": "application/json" };
+  let body = {};
+
+  // Configure based on provider type
+  if (
+    provider.template === "openai" ||
+    provider.template === "deepseek" ||
+    provider.template === "grok" ||
+    provider.template === "kimi" ||
+    provider.template === "perplexity" ||
+    provider.template === "mistral"
+  ) {
+    headers["Authorization"] = `Bearer ${apiKey}`;
+    body = {
+      model: model,
+      messages: [{ role: "user", content: userMessageContent }],
+      temperature: 0.3,
+      stream: false,
+    };
+  } else if (provider.template === "anthropic") {
+    headers["x-api-key"] = apiKey;
+    headers["anthropic-version"] = "2023-06-01";
+    headers["content-type"] = "application/json";
+    body = {
+      model: model,
+      messages: [{ role: "user", content: userMessageContent }],
+      max_tokens: 256,
+      stream: false,
+    };
+  } else if (provider.template === "gemini") {
+    endpoint = endpoint.replace("{model}", model) + `?key=${apiKey}`;
+    headers = { "Content-Type": "application/json" };
+    body = {
+      contents: [{ parts: [{ text: userMessageContent }] }],
+      generationConfig: {
+        temperature: 0.3,
+        maxOutputTokens: 256,
+      },
+    };
+  } else {
+    headers["Authorization"] = `Bearer ${apiKey}`;
+    body = {
+      model: model,
+      messages: [{ role: "user", content: userMessageContent }],
+      stream: false,
+    };
+  }
+
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: headers,
+      body: JSON.stringify(body),
+      mode: "cors",
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `API call failed: ${response.status} ${response.statusText}`,
+      );
+    }
+
+    const data = await response.json();
+
+    // Parse response based on provider type
+    // OpenAI-compatible format
+    if (data.choices && data.choices[0]) {
+      return data.choices[0].message.content.trim();
+    }
+    // Anthropic format (non-streaming)
+    else if (
+      data.content &&
+      Array.isArray(data.content) &&
+      data.content.length > 0
+    ) {
+      const contentBlock = data.content[0];
+      if (contentBlock.text) {
+        return contentBlock.text.trim();
+      }
+      if (contentBlock.type === "text" && contentBlock.text) {
+        return contentBlock.text.trim();
+      }
+    }
+    // Anthropic format (alternative)
+    else if (data.content && data.content[0] && data.content[0].text) {
+      return data.content[0].text.trim();
+    }
+    // Gemini format
+    else if (data.candidates && data.candidates[0]) {
+      const candidate = data.candidates[0];
+      if (candidate.content && candidate.content.parts) {
+        return candidate.content.parts
+          .map((part) => part.text)
+          .join("")
+          .trim();
+      }
+    }
+
+    // Debug: log unexpected format
+    console.error(
+      "Unexpected response format:",
+      JSON.stringify(data).substring(0, 500),
+    );
+    throw new Error(
+      "Unexpected response format: " + JSON.stringify(data).substring(0, 200),
+    );
+  } catch (error) {
+    throw new Error(`Failed to get response: ${error.message}`);
+  }
+};
+
+// Detect if prompt contains self-validating statements
+chat.detectSelfValidation = async function (prompt) {
+  const lightModel = chat.getLightestModel();
+  // #region agent log
+  fetch("http://127.0.0.1:7242/ingest/e76804c4-a29e-4825-8be1-f523f118edf4", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      location: "script.js:detectSelfValidation",
+      message: "entry",
+      data: { hasLightModel: !!lightModel, providerId: lightModel?.providerId },
+      timestamp: Date.now(),
+      sessionId: "debug-session",
+      runId: "initial",
+      hypothesisId: "C",
+    }),
+  }).catch(() => {});
+  // #endregion
+  if (!lightModel) {
+    return false; // Fallback: assume not self-validating if no light model
+  }
+
+  const classificationPrompt = `Does this statement contain self-validating or self-congratulatory logic where the speaker positions themselves as good/right? Respond with only 'yes' or 'no':\n\n${prompt}`;
+
+  try {
+    // #region agent log
+    fetch("http://127.0.0.1:7242/ingest/e76804c4-a29e-4825-8be1-f523f118edf4", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        location: "script.js:detectSelfValidation",
+        message: "calling simpleApiCall",
+        data: { promptLength: classificationPrompt.length },
+        timestamp: Date.now(),
+        sessionId: "debug-session",
+        runId: "initial",
+        hypothesisId: "C",
+      }),
+    }).catch(() => {});
+    // #endregion
+    const response = await chat.simpleApiCall(
+      classificationPrompt,
+      lightModel.providerId,
+      true, // Skip system prompt for classification
+    );
+    // #region agent log
+    fetch("http://127.0.0.1:7242/ingest/e76804c4-a29e-4825-8be1-f523f118edf4", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        location: "script.js:detectSelfValidation",
+        message: "simpleApiCall result",
+        data: {
+          response: response?.substring(0, 50),
+          responseLength: response?.length,
+        },
+        timestamp: Date.now(),
+        sessionId: "debug-session",
+        runId: "initial",
+        hypothesisId: "C",
+      }),
+    }).catch(() => {});
+    // #endregion
+    const lowerResponse = response.toLowerCase().trim();
+    // More lenient detection: check for yes, true, affirmative indicators
+    const result =
+      lowerResponse.startsWith("yes") ||
+      lowerResponse.includes("yes") ||
+      lowerResponse.startsWith("true") ||
+      lowerResponse.includes("true") ||
+      lowerResponse.includes("affirmative") ||
+      (lowerResponse.length < 10 &&
+        (lowerResponse === "y" || lowerResponse === "1"));
+    // #region agent log
+    fetch("http://127.0.0.1:7242/ingest/e76804c4-a29e-4825-8be1-f523f118edf4", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        location: "script.js:detectSelfValidation",
+        message: "final result",
+        data: { result: result, lowerResponse: lowerResponse },
+        timestamp: Date.now(),
+        sessionId: "debug-session",
+        runId: "initial",
+        hypothesisId: "C",
+      }),
+    }).catch(() => {});
+    // #endregion
+    return result;
+  } catch (error) {
+    // #region agent log
+    fetch("http://127.0.0.1:7242/ingest/e76804c4-a29e-4825-8be1-f523f118edf4", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        location: "script.js:detectSelfValidation",
+        message: "error",
+        data: { error: error.message },
+        timestamp: Date.now(),
+        sessionId: "debug-session",
+        runId: "initial",
+        hypothesisId: "C",
+      }),
+    }).catch(() => {});
+    // #endregion
+    console.error("Error detecting self-validation:", error);
+    return false; // Fallback: assume not self-validating on error
+  }
+};
+
+// Reverse the logic of a prompt
+chat.reversePromptLogic = async function (prompt) {
+  const lightModel = chat.getLightestModel();
+  if (!lightModel) {
+    throw new Error("No light model available for prompt reversal");
+  }
+
+  const reversalPrompt = `Reverse the logic of this statement, making opposite claims while maintaining the same structure. Only return the reversed statement, do not include any explanation:\n\n${prompt}`;
+
+  try {
+    const reversed = await chat.simpleApiCall(
+      reversalPrompt,
+      lightModel.providerId,
+      true, // Skip system prompt for reversal
+    );
+    return reversed.trim();
+  } catch (error) {
+    console.error("Error reversing prompt:", error);
+    throw new Error(`Failed to reverse prompt: ${error.message}`);
+  }
+};
+
+// Handle challenge mode: detect, reverse, and test
+chat.handleChallengeMode = async function (prompt) {
+  // Check if challenge mode is enabled
+  const checkbox = chat("challengeMeCheckbox");
+  // #region agent log
+  fetch("http://127.0.0.1:7242/ingest/e76804c4-a29e-4825-8be1-f523f118edf4", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      location: "script.js:handleChallengeMode",
+      message: "entry",
+      data: { checkboxFound: !!checkbox, checked: checkbox?.checked },
+      timestamp: Date.now(),
+      sessionId: "debug-session",
+      runId: "initial",
+      hypothesisId: "B",
+    }),
+  }).catch(() => {});
+  // #endregion
+  if (!checkbox || !checkbox.checked) {
+    return null;
+  }
+
+  // Check if we have a light model available
+  const lightModel = chat.getLightestModel();
+  // #region agent log
+  fetch("http://127.0.0.1:7242/ingest/e76804c4-a29e-4825-8be1-f523f118edf4", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      location: "script.js:handleChallengeMode",
+      message: "light model check",
+      data: {
+        hasLightModel: !!lightModel,
+        providerId: lightModel?.providerId,
+        model: lightModel?.model,
+      },
+      timestamp: Date.now(),
+      sessionId: "debug-session",
+      runId: "initial",
+      hypothesisId: "B",
+    }),
+  }).catch(() => {});
+  // #endregion
+  if (!lightModel) {
+    console.warn("No light model available for challenge mode");
+    return null;
+  }
+
+  try {
+    // Show detection status
+    chat("message").innerText = "Detecting self-validation...";
+
+    // Detect if prompt is self-validating
+    // #region agent log
+    fetch("http://127.0.0.1:7242/ingest/e76804c4-a29e-4825-8be1-f523f118edf4", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        location: "script.js:handleChallengeMode",
+        message: "calling detectSelfValidation",
+        data: { prompt: prompt.substring(0, 50) },
+        timestamp: Date.now(),
+        sessionId: "debug-session",
+        runId: "initial",
+        hypothesisId: "C",
+      }),
+    }).catch(() => {});
+    // #endregion
+    const isSelfValidating = await chat.detectSelfValidation(prompt);
+    // #region agent log
+    fetch("http://127.0.0.1:7242/ingest/e76804c4-a29e-4825-8be1-f523f118edf4", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        location: "script.js:handleChallengeMode",
+        message: "detectSelfValidation result",
+        data: { isSelfValidating: isSelfValidating },
+        timestamp: Date.now(),
+        sessionId: "debug-session",
+        runId: "initial",
+        hypothesisId: "C",
+      }),
+    }).catch(() => {});
+    // #endregion
+    // Always proceed with challenge mode when enabled, regardless of detection
+    // (Detection is informational, but user explicitly enabled challenge mode)
+
+    // Show reversal status
+    chat("message").innerText = "Reversing prompt logic...";
+
+    // Reverse the prompt
+    // #region agent log
+    fetch("http://127.0.0.1:7242/ingest/e76804c4-a29e-4825-8be1-f523f118edf4", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        location: "script.js:handleChallengeMode",
+        message: "calling reversePromptLogic",
+        data: { prompt: prompt.substring(0, 50) },
+        timestamp: Date.now(),
+        sessionId: "debug-session",
+        runId: "initial",
+        hypothesisId: "D",
+      }),
+    }).catch(() => {});
+    // #endregion
+    const reversedPrompt = await chat.reversePromptLogic(prompt);
+    // #region agent log
+    fetch("http://127.0.0.1:7242/ingest/e76804c4-a29e-4825-8be1-f523f118edf4", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        location: "script.js:handleChallengeMode",
+        message: "reversePromptLogic result",
+        data: {
+          reversedPrompt: reversedPrompt?.substring(0, 100),
+          length: reversedPrompt?.length,
+        },
+        timestamp: Date.now(),
+        sessionId: "debug-session",
+        runId: "initial",
+        hypothesisId: "D",
+      }),
+    }).catch(() => {});
+    // #endregion
+
+    // Show testing status
+    chat("message").innerText = "Testing with contradictory prompts...";
+
+    // Send both prompts to all selected LLMs without history and without system prompts
+    // (We want raw responses to see if LLM agrees with contradictory statements)
+    const originalPromises = chat.activeLLMs.map((providerId) =>
+      chat.streamToLLMNoUI(prompt, providerId, {
+        skipHistory: true,
+        skipSystemPrompt: true,
+      }),
+    );
+    const reversedPromises = chat.activeLLMs.map((providerId) =>
+      chat.streamToLLMNoUI(reversedPrompt, providerId, {
+        skipHistory: true,
+        skipSystemPrompt: true,
+      }),
+    );
+
+    // Wait for all responses
+    const originalResults = await Promise.allSettled(originalPromises);
+    const reversedResults = await Promise.allSettled(reversedPromises);
+
+    // Process results
+    const results = {};
+    chat.activeLLMs.forEach((providerId, index) => {
+      const provider = chat.providers.find((p) => p.id === providerId);
+      const originalResult = originalResults[index];
+      const reversedResult = reversedResults[index];
+
+      // #region agent log
+      fetch(
+        "http://127.0.0.1:7242/ingest/e76804c4-a29e-4825-8be1-f523f118edf4",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            location: "script.js:handleChallengeMode",
+            message: "processing results",
+            data: {
+              providerId: providerId,
+              originalStatus: originalResult.status,
+              reversedStatus: reversedResult.status,
+              originalResult:
+                originalResult.status === "fulfilled"
+                  ? originalResult.value.result?.substring(0, 100)
+                  : null,
+            },
+            timestamp: Date.now(),
+            sessionId: "debug-session",
+            runId: "initial",
+            hypothesisId: "E",
+          }),
+        },
+      ).catch(() => {});
+      // #endregion
+
+      results[providerId] = {
+        providerName: provider ? provider.name : providerId,
+        original: {
+          prompt: prompt,
+          success: originalResult.status === "fulfilled",
+          result:
+            originalResult.status === "fulfilled"
+              ? originalResult.value.result
+              : null,
+          error:
+            originalResult.status === "rejected"
+              ? originalResult.reason.error
+              : null,
+        },
+        reversed: {
+          prompt: reversedPrompt,
+          success: reversedResult.status === "fulfilled",
+          result:
+            reversedResult.status === "fulfilled"
+              ? reversedResult.value.result
+              : null,
+          error:
+            reversedResult.status === "rejected"
+              ? reversedResult.reason.error
+              : null,
+        },
+      };
+    });
+
+    // #region agent log
+    fetch("http://127.0.0.1:7242/ingest/e76804c4-a29e-4825-8be1-f523f118edf4", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        location: "script.js:handleChallengeMode",
+        message: "returning results",
+        data: {
+          resultCount: Object.keys(results).length,
+          providerIds: Object.keys(results),
+        },
+        timestamp: Date.now(),
+        sessionId: "debug-session",
+        runId: "initial",
+        hypothesisId: "E",
+      }),
+    }).catch(() => {});
+    // #endregion
+    return results;
+  } catch (error) {
+    // #region agent log
+    fetch("http://127.0.0.1:7242/ingest/e76804c4-a29e-4825-8be1-f523f118edf4", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        location: "script.js:handleChallengeMode",
+        message: "error caught",
+        data: { error: error.message, stack: error.stack?.substring(0, 200) },
+        timestamp: Date.now(),
+        sessionId: "debug-session",
+        runId: "initial",
+        hypothesisId: "F",
+      }),
+    }).catch(() => {});
+    // #endregion
+    console.error("Error in challenge mode:", error);
+    chat("message").innerText = `Challenge mode error: ${error.message}`;
+    return null;
+  }
+};
+
+// Display challenge mode results side-by-side
+chat.displayChallengeResults = function (results, prompt) {
+  // Add prompt header
+  chat("main").innerHTML +=
+    `<h4 class="prompt" style="border-left: 4px solid #f59e0b; padding-left: 12px;">${prompt}</h4>\n`;
+  chat("main").innerHTML +=
+    `<div style="background: #fff3cd; border: 1px solid #ffc107; padding: 12px; margin: 12px 0; border-radius: 6px; font-size: 13px;">
+    <strong>🔍 Challenge Mode Active:</strong> Testing with contradictory prompts to detect if LLM agrees with both statements.
+  </div>\n`;
+
+  // Display results for each provider
+  Object.keys(results).forEach((providerId) => {
+    const result = results[providerId];
+    const divId = `challenge_${providerId}_${Date.now()}`;
+
+    // Determine if responses show contradiction (both successful and seem to agree)
+    const bothSuccessful = result.original.success && result.reversed.success;
+    const hasContradiction =
+      bothSuccessful && result.original.result && result.reversed.result;
+
+    // Create side-by-side layout
+    let html = `<div id="${divId}" class="response-container" style="border: 2px solid ${hasContradiction ? "#dc3545" : "#10b981"}; border-radius: 8px; margin: 16px 0; padding: 16px;">
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
+        <span class="response-badge" style="background: ${hasContradiction ? "#dc3545" : "#10b981"};">
+          ${result.providerName} - Challenge Test
+        </span>
+        ${
+          hasContradiction
+            ? '<span style="background: #dc3545; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">⚠️ Contradiction Detected</span>'
+            : '<span style="background: #10b981; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">✓ No Contradiction</span>'
+        }
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px;">
+        <!-- Original Prompt & Response -->
+        <div style="background: #f8f9fa; padding: 12px; border-radius: 6px; border-left: 3px solid #3b82f6;">
+          <div style="font-weight: bold; color: #3b82f6; margin-bottom: 8px; font-size: 14px;">Original Prompt:</div>
+          <div style="background: white; padding: 8px; border-radius: 4px; margin-bottom: 12px; font-size: 13px; color: #333;">
+            ${result.original.prompt}
+          </div>
+          <div style="font-weight: bold; color: #3b82f6; margin-bottom: 8px; font-size: 14px;">Response:</div>
+          ${
+            result.original.success
+              ? `<div style="background: white; padding: 8px; border-radius: 4px;">${md.html(result.original.result)}</div>`
+              : `<div style="color: #dc3545; padding: 8px;">Error: ${result.original.error || "Unknown error"}</div>`
+          }
+        </div>
+        <!-- Reversed Prompt & Response -->
+        <div style="background: #f8f9fa; padding: 12px; border-radius: 6px; border-left: 3px solid #f59e0b;">
+          <div style="font-weight: bold; color: #f59e0b; margin-bottom: 8px; font-size: 14px;">Reversed Prompt:</div>
+          <div style="background: white; padding: 8px; border-radius: 4px; margin-bottom: 12px; font-size: 13px; color: #333;">
+            ${result.reversed.prompt}
+          </div>
+          <div style="font-weight: bold; color: #f59e0b; margin-bottom: 8px; font-size: 14px;">Response:</div>
+          ${
+            result.reversed.success
+              ? `<div style="background: white; padding: 8px; border-radius: 4px;">${md.html(result.reversed.result)}</div>`
+              : `<div style="color: #dc3545; padding: 8px;">Error: ${result.reversed.error || "Unknown error"}</div>`
+          }
+        </div>
+      </div>
+    </div>`;
+
+    chat("main").innerHTML += html;
+  });
+
+  // Scroll to bottom
+  requestAnimationFrame(() => {
+    const leftEl = chat("left");
+    if (leftEl) {
+      leftEl.scrollTo({
+        top: leftEl.scrollHeight,
+        behavior: "smooth",
+      });
+    }
+  });
+};
+
 // Stream to multiple LLMs
 chat.streamMulti = function (prompt) {
   if (chat.activeLLMs.length === 0) {
@@ -2380,6 +3325,12 @@ chat.updateHistoryDisplay = () => {
 
   for (let i = 0; i < chat.history.length; i++) {
     const entry = chat.history[i];
+
+    // Skip challenge mode entries - they're displayed separately
+    if (entry.challengeMode) {
+      continue;
+    }
+
     html1 +=
       "<h4 class=prompt id=prompt" +
       i +
@@ -2432,7 +3383,7 @@ chat.updateHistoryDisplay = () => {
 };
 
 // Submit prompt
-chat.submit = () => {
+chat.submit = async () => {
   if (chat("btnSend").disabled) {
     chat("btnSend").innerHTML = chat.getSendIconSVG();
     chat("btnSend").disabled = false;
@@ -2442,6 +3393,135 @@ chat.submit = () => {
   const prompt = chat("prompt").value.trim();
   if (!prompt) return;
 
+  // Check if challenge mode is enabled
+  const challengeCheckbox = chat("challengeMeCheckbox");
+  // #region agent log
+  fetch("http://127.0.0.1:7242/ingest/e76804c4-a29e-4825-8be1-f523f118edf4", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      location: "script.js:submit",
+      message: "submit entry",
+      data: {
+        checkboxFound: !!challengeCheckbox,
+        checked: challengeCheckbox?.checked,
+        prompt: prompt.substring(0, 50),
+      },
+      timestamp: Date.now(),
+      sessionId: "debug-session",
+      runId: "initial",
+      hypothesisId: "A",
+    }),
+  }).catch(() => {});
+  // #endregion
+  if (challengeCheckbox && challengeCheckbox.checked) {
+    // Disable button during challenge mode processing
+    const btnSend = chat("btnSend");
+    if (btnSend) {
+      btnSend.disabled = true;
+      btnSend.innerHTML = chat.getStopIconSVG();
+    }
+
+    try {
+      // Try challenge mode first
+      // #region agent log
+      fetch(
+        "http://127.0.0.1:7242/ingest/e76804c4-a29e-4825-8be1-f523f118edf4",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            location: "script.js:submit",
+            message: "calling handleChallengeMode",
+            data: { prompt: prompt.substring(0, 50) },
+            timestamp: Date.now(),
+            sessionId: "debug-session",
+            runId: "initial",
+            hypothesisId: "A",
+          }),
+        },
+      ).catch(() => {});
+      // #endregion
+      const challengeResults = await chat.handleChallengeMode(prompt);
+      // #region agent log
+      fetch(
+        "http://127.0.0.1:7242/ingest/e76804c4-a29e-4825-8be1-f523f118edf4",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            location: "script.js:submit",
+            message: "handleChallengeMode returned",
+            data: {
+              hasResults: !!challengeResults,
+              resultKeys: challengeResults
+                ? Object.keys(challengeResults)
+                : null,
+            },
+            timestamp: Date.now(),
+            sessionId: "debug-session",
+            runId: "initial",
+            hypothesisId: "A",
+          }),
+        },
+      ).catch(() => {});
+      // #endregion
+      if (challengeResults) {
+        // Clear any existing content that might interfere
+        // (challenge mode displays its own format)
+        // Display challenge results
+        chat.displayChallengeResults(challengeResults, prompt);
+
+        // Save to history
+        chat.history.push({
+          prompt: prompt,
+          results: Object.keys(challengeResults).reduce((acc, providerId) => {
+            const result = challengeResults[providerId];
+            acc[providerId] = result.original.success
+              ? result.original.result
+              : `Error: ${result.original.error || "Unknown error"}`;
+            return acc;
+          }, {}),
+          providers: Object.keys(challengeResults).map(
+            (id) => challengeResults[id].providerName,
+          ),
+          challengeMode: true,
+          challengeResults: challengeResults,
+        });
+
+        chat.saveProviders();
+        // Don't call updateHistoryDisplay() - challenge results are already displayed
+        chat.updateAnalytics();
+        chat("message").innerText = "Challenge mode test completed";
+
+        // Clear prompt on mobile, keep on desktop
+        if (document.body.clientWidth <= 880) {
+          chat("prompt").value = "";
+        } else {
+          chat("prompt").focus();
+        }
+
+        // Re-enable button
+        if (btnSend) {
+          btnSend.disabled = false;
+          btnSend.innerHTML = chat.getSendIconSVG();
+        }
+
+        return;
+      }
+    } catch (error) {
+      console.error("Error in challenge mode:", error);
+      chat("message").innerText = `Challenge mode error: ${error.message}`;
+    } finally {
+      // Re-enable button
+      if (btnSend) {
+        btnSend.disabled = false;
+        btnSend.innerHTML = chat.getSendIconSVG();
+      }
+    }
+  }
+
+  // Normal flow
   chat.streamMulti(prompt);
 };
 
@@ -2651,6 +3731,12 @@ window.onload = () => {
     console.error("Failed to load system prompt catalog:", error);
   });
   chat.updateTempSystemPromptDisplay();
+
+  // Initialize challenge mode state from checkbox
+  const challengeCheckbox = chat("challengeMeCheckbox");
+  if (challengeCheckbox) {
+    chat.challengeModeEnabled = challengeCheckbox.checked;
+  }
 
   // Setup textarea auto-resize
   const textarea = chat("prompt");
